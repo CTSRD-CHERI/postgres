@@ -382,12 +382,17 @@ typedef Datum *DatumPtr;
 #define GET_4_BYTES(datum)	(((Datum) (datum)) & 0xffffffff)
 #if SIZEOF_DATUM == 8
 #define GET_8_BYTES(datum)	((Datum) (datum))
+#elif SIZEOF_DATUM > 8
+
+#define GET_8_BYTES(datum)	(((Datum) (datum)) & 0xffffffffffffffffull)
 #endif
 #define SET_1_BYTE(value)	(((Datum) (value)) & 0x000000ff)
 #define SET_2_BYTES(value)	(((Datum) (value)) & 0x0000ffff)
 #define SET_4_BYTES(value)	(((Datum) (value)) & 0xffffffff)
 #if SIZEOF_DATUM == 8
 #define SET_8_BYTES(value)	((Datum) (value))
+#elif SIZEOF_DATUM > 8
+#define SET_8_BYTES(value)	(((Datum) (value)) & 0xffffffffffffffffull)
 #endif
 
 /*
