@@ -8,7 +8,7 @@ READLINE_INCLUDE_DIR=${CHERIBSD_SYSROOT}/usr/include/edit/
 COMPILE_FLAGS="--sysroot=${CHERIBSD_SYSROOT} -B${CHERISDK} -mabi=sandbox -msoft-float -mxgot -isystem ${READLINE_INCLUDE_DIR} -Wno-cheri-capability-misuse -Werror=implicit-function-declaration"
 export CFLAGS=${COMPILE_FLAGS}
 export CXXFLAGS=${COMPILE_FLAGS}
-export LDFLAGS="--sysroot=${CHERIBSD_SYSROOT} -B${CHERISDK} -mabi=sandbox -msoft-float"
+export LDFLAGS="--sysroot=${CHERIBSD_SYSROOT} -B${CHERISDK} -mabi=sandbox -msoft-float -mxgot"
 # env | sort
 ./configure --host=cheri-unknown-freebsd --target=cheri-unknown-freebsd --build=x86_64-unknown-freebsd --prefix=/home/alr48/cheri/postgres
 gmake -j1
