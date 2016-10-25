@@ -578,6 +578,8 @@ tas(volatile slock_t *lock)
 /* Note: R10000 processors require a separate SYNC */
 #define HAS_TEST_AND_SET
 
+/* Use C11 atomics for now */
+#ifndef __CHERI_PURE_CAPABILITY__
 typedef unsigned int slock_t;
 
 #define TAS(lock) tas(lock)
@@ -623,6 +625,16 @@ do \
 :		"memory"); \
 	*((volatile slock_t *) (lock)) = 0; \
 } while (0)
+
+#else /* __CHERI_PURE_CAPABILITY__ */
+/* Use C11 atomics for CHERIABI */
+#include <stdatomic.h>
+typedef atomic_flag slock_t;
+/* TODO: use acquire/release semantics for minor perf improvement */
+#define TAS(lock) atomic_flag_test_and_set(lock)
+#define S_UNLOCK(lock) atomic_flag_clear(lock)
+
+#endif /* __CHERI_PURE_CAPABILITY__ */
 
 #endif /* __mips__ && !__sgi */
 
