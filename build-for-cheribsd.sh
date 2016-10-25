@@ -5,7 +5,7 @@ export PATH=${CHERISDK}:$PATH
 export CC=${CHERISDK}/clang
 export CXX=${CHERISDK}/clang++
 READLINE_INCLUDE_DIR=${CHERIBSD_SYSROOT}/usr/include/edit/
-COMPILE_FLAGS="--sysroot=${CHERIBSD_SYSROOT} -B${CHERISDK} -mabi=sandbox -msoft-float -mxgot -isystem ${READLINE_INCLUDE_DIR} -Werror=cheri-capability-misuse -Werror=implicit-function-declaration"
+COMPILE_FLAGS="--sysroot=${CHERIBSD_SYSROOT} -B${CHERISDK} -mabi=sandbox -msoft-float -mxgot -isystem ${READLINE_INCLUDE_DIR} -Wno-cheri-capability-misuse -Werror=implicit-function-declaration"
 export CFLAGS=${COMPILE_FLAGS}
 export CXXFLAGS=${COMPILE_FLAGS}
 export LDFLAGS="--sysroot=${CHERIBSD_SYSROOT} -B${CHERISDK} -mabi=sandbox -msoft-float"
