@@ -117,9 +117,9 @@ typedef struct BTMetaPageData
  * so restrict any one item to 1/3 the per-page available space.
  */
 #define BTMaxItemSize(page) \
-	MAXALIGN_DOWN((PageGetPageSize(page) - \
+	((size_t)MAXALIGN_DOWN((PageGetPageSize(page) - \
 				   MAXALIGN(SizeOfPageHeaderData + 3*sizeof(ItemIdData)) - \
-				   MAXALIGN(sizeof(BTPageOpaqueData))) / 3)
+				   MAXALIGN(sizeof(BTPageOpaqueData))) / 3))
 
 /*
  * The leaf-page fillfactor defaults to 90% but is user-adjustable.
