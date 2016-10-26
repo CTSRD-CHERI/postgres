@@ -351,12 +351,14 @@ typedef struct NumericSumAccum
  * USE_FLOAT8_BYVAL.  The type of abbreviation we use is based only on
  * the size of a datum, not the argument-passing convention for float8.
  */
-#define NUMERIC_ABBREV_BITS (SIZEOF_DATUM * BITS_PER_BYTE)
-#if SIZEOF_DATUM == 8
+#if SIZEOF_DATUM >= 8
+/* If sizeof(void*) > 8 we still only want to use 64 bits here */
+#define NUMERIC_ABBREV_BITS 64
 #define NumericAbbrevGetDatum(X) ((Datum) SET_8_BYTES(X))
 #define DatumGetNumericAbbrev(X) ((int64) GET_8_BYTES(X))
 #define NUMERIC_ABBREV_NAN		 NumericAbbrevGetDatum(PG_INT64_MIN)
 #else
+#define NUMERIC_ABBREV_BITS (SIZEOF_DATUM * BITS_PER_BYTE)
 #define NumericAbbrevGetDatum(X) ((Datum) SET_4_BYTES(X))
 #define DatumGetNumericAbbrev(X) ((int32) GET_4_BYTES(X))
 #define NUMERIC_ABBREV_NAN		 NumericAbbrevGetDatum(PG_INT32_MIN)
