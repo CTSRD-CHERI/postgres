@@ -9,6 +9,7 @@ COMMON_FLAGS="--sysroot=${CHERIBSD_SYSROOT} -B${CHERISDK} -mabi=sandbox -msoft-f
 COMPILE_FLAGS="${COMMON_FLAGS} -isystem ${READLINE_INCLUDE_DIR} -Wno-cheri-capability-misuse -Werror=implicit-function-declaration -Wno-error=format -Werror=undefined-internal"
 export CFLAGS=${COMPILE_FLAGS}
 export CXXFLAGS=${COMPILE_FLAGS}
+export CPPFLAGS=${COMMON_FLAGS}
 export LDFLAGS="${COMMON_FLAGS} -pthread"
 # LDFLAGS_EX  extra linker flags for linking executables only
 # LDFLAGS_SL  extra linker flags for linking shared libraries only
