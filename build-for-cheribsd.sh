@@ -15,4 +15,4 @@ export LDFLAGS="${COMMON_FLAGS} -pthread"
 # LDFLAGS_SL  extra linker flags for linking shared libraries only
 # env | sort
 ./configure --host=cheri-unknown-freebsd --target=cheri-unknown-freebsd --build=x86_64-unknown-freebsd --prefix=/home/alr48/postgres --enable-debug
-gmake -j1
+gmake -j16
