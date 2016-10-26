@@ -100,7 +100,7 @@ typedef ArrayType Acl;
 
 #define ACL_NUM(ACL)			(ARR_DIMS(ACL)[0])
 #define ACL_DAT(ACL)			((AclItem *) ARR_DATA_PTR(ACL))
-#define ACL_N_SIZE(N)			(ARR_OVERHEAD_NONULLS(1) + ((N) * sizeof(AclItem)))
+#define ACL_N_SIZE(N)			(size_t) (ARR_OVERHEAD_NONULLS(1) + ((N) * sizeof(AclItem)))
 #define ACL_SIZE(ACL)			ARR_SIZE(ACL)
 
 /*
