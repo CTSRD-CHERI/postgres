@@ -482,7 +482,7 @@ extern bool gistvalidate(Oid opclassoid);
 /* gistutil.c */
 
 #define GiSTPageSize   \
-	( BLCKSZ - SizeOfPageHeaderData - MAXALIGN(sizeof(GISTPageOpaqueData)) )
+	(size_t)( BLCKSZ - SizeOfPageHeaderData - MAXALIGN(sizeof(GISTPageOpaqueData)) )
 
 #define GIST_MIN_FILLFACTOR			10
 #define GIST_DEFAULT_FILLFACTOR		90
