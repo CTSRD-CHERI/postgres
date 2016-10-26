@@ -41,7 +41,7 @@ pg_comp_crc32c_sb8(pg_crc32c crc, const void *data, size_t len)
 	 * Handle 0-3 initial bytes one at a time, so that the loop below starts
 	 * with a pointer aligned to four bytes.
 	 */
-	while (len > 0 && ((uintptr_t) p & 3))
+	while (len > 0 && ((uintptr_t) p & (uintptr_t) 3))
 	{
 		crc = CRC8(*p++);
 		len--;
