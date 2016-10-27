@@ -23,3 +23,4 @@ gmake install DESTDIR=/home/alr48/postgres-mips
 gmake -C src/test/regress install-tests DESTDIR=/home/alr48/postgres-mips
 # won't work
 # gmake installcheck DESTDIR=/home/alr48/postgres-mips
+$CHERISDK/objdump -xrslSD ./src/test/regress/pg_regress > pg_regress.mips.dump
