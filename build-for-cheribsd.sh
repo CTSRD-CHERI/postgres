@@ -16,5 +16,5 @@ export LDFLAGS="${COMMON_FLAGS} -pthread"
 # env | sort
 # ./configure --host=cheri-unknown-freebsd --target=cheri-unknown-freebsd --build=x86_64-unknown-freebsd --prefix=/home/alr48/postgres --enable-debug
 # more minimal: --without-libxml --without-readline --without-gssapi
-./configure --host=cheri-unknown-freebsd --target=cheri-unknown-freebsd --build=x86_64-unknown-freebsd --prefix=/home/alr48/postgres --enable-debug --without-libxml --without-readline --without-gssapi
+./configure --host=cheri-unknown-freebsd --target=cheri-unknown-freebsd --build=x86_64-unknown-freebsd --prefix=/root/postgres-cheri/ --enable-debug --without-libxml --without-readline --without-gssapi
 gmake -k -j16
