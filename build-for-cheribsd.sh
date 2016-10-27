@@ -5,7 +5,7 @@ export PATH=${CHERISDK}:$PATH
 export CC=${CHERISDK}/clang
 export CXX=${CHERISDK}/clang++
 READLINE_INCLUDE_DIR=${CHERIBSD_SYSROOT}/usr/include/edit/
-COMMON_FLAGS="--sysroot=${CHERIBSD_SYSROOT} -B${CHERISDK} -mabi=sandbox -msoft-float -mxgot"
+COMMON_FLAGS="--sysroot=${CHERIBSD_SYSROOT} -B${CHERISDK} -mabi=sandbox -msoft-float -mxgot -O0"
 COMPILE_FLAGS="${COMMON_FLAGS} -isystem ${READLINE_INCLUDE_DIR} -Werror=cheri-capability-misuse -Werror=implicit-function-declaration -Werror=format -Werror=undefined-internal"
 export CFLAGS=${COMPILE_FLAGS}
 export CXXFLAGS=${COMPILE_FLAGS}
@@ -20,3 +20,4 @@ export LDFLAGS="${COMMON_FLAGS} -pthread"
 gmake -j16
 gmake install DESTDIR=/home/alr48/postgres-cheri
 gmake -C src/test/regress install-tests DESTDIR=/home/alr48/postgres-cheri
+$CHERISDK/objdump -xrslSD ./src/test/regress/pg_regress > pg_regress.cheri.dump
