@@ -17,10 +17,13 @@ export LDFLAGS="${COMMON_FLAGS} -pthread"
 # env | sort
 # ./configure --host=cheri-unknown-freebsd --target=cheri-unknown-freebsd --build=x86_64-unknown-freebsd --prefix=/home/alr48/postgres --enable-debug
 # more minimal: --without-libxml --without-readline --without-gssapi
-./configure --host=mips64-unknown-freebsd --target=mips64-unknown-freebsd --build=x86_64-unknown-freebsd --prefix=/root/postgres-mips/ --enable-debug --without-libxml --without-readline --without-gssapi
+./configure --host=mips64-unknown-freebsd --target=mips64-unknown-freebsd --build=x86_64-unknown-freebsd --prefix=/postgres/mips --enable-debug --without-libxml --without-readline --without-gssapi --enable-cassert --disable-nls --without-ldap --without-libxslt
+INSTALL_DIR=/exports/users/alr48
 gmake -j16
-gmake install DESTDIR=/home/alr48/postgres-mips
-gmake -C src/test/regress install-tests DESTDIR=/home/alr48/postgres-mips
+gmake install DESTDIR=${INSTALL_DIR}
+gmake -C src/test/regress install-tests DESTDIR=${INSTALL_DIR}
 # won't work
 # gmake installcheck DESTDIR=/home/alr48/postgres-mips
+echo "$CHERISDK/objdump -xrslSD ./src/test/regress/pg_regress > pg_regress.mips.dump"
 $CHERISDK/objdump -xrslSD ./src/test/regress/pg_regress > pg_regress.mips.dump
+cp -fv run-postgres-tests-mips.sh "${INSTALL_DIR}/run-postgres-tests-mips.sh"

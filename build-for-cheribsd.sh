@@ -14,10 +14,12 @@ export LDFLAGS="${COMMON_FLAGS} -pthread"
 # LDFLAGS_EX  extra linker flags for linking executables only
 # LDFLAGS_SL  extra linker flags for linking shared libraries only
 # env | sort
-# ./configure --host=cheri-unknown-freebsd --target=cheri-unknown-freebsd --build=x86_64-unknown-freebsd --prefix=/home/alr48/postgres --enable-debug
 # more minimal: --without-libxml --without-readline --without-gssapi
-./configure --host=cheri-unknown-freebsd --target=cheri-unknown-freebsd --build=x86_64-unknown-freebsd --prefix=/root/postgres-cheri/ --enable-debug --without-libxml --without-readline --without-gssapi
+./configure --host=cheri-unknown-freebsd --target=cheri-unknown-freebsd --build=x86_64-unknown-freebsd --prefix=/postgres/cheri/ --enable-debug --without-libxml --without-readline --without-gssapi
+INSTALL_DIR=/exports/users/alr48
 gmake -j16
-gmake install DESTDIR=/home/alr48/postgres-cheri
-gmake -C src/test/regress install-tests DESTDIR=/home/alr48/postgres-cheri
+gmake install DESTDIR=${INSTALL_DIR}
+gmake -C src/test/regress install-tests DESTDIR=${INSTALL_DIR}
+echo "$CHERISDK/objdump -xrslSD ./src/test/regress/pg_regress > pg_regress.cheri.dump"
 $CHERISDK/objdump -xrslSD ./src/test/regress/pg_regress > pg_regress.cheri.dump
+cp -fv run-postgres-tests-cheri.sh "${INSTALL_DIR}/run-postgres-tests-cheri.sh"
