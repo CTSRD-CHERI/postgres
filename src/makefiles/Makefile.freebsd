@@ -5,15 +5,16 @@ export_dynamic = -Wl,-export-dynamic
 rpath = -Wl,-R'$(rpathdir)'
 endif
 
-DLSUFFIX = .so
+DLSUFFIX = .a
 
 CFLAGS_SL = -fPIC -DPIC
 
 
 # Rule for building a shared library from a single .o file
-%.so: %.o
+%.a: %.o
 ifdef ELF_SYSTEM
-	$(CC) $(CFLAGS) $(LDFLAGS) $(LDFLAGS_SL) -shared -o $@ $<
+	$(AR) $(AROPT) $@ $<
+#	$(CC) $(CFLAGS) $(LDFLAGS) $(LDFLAGS_SL) -shared -o $@ $<
 else
 	$(LD) $(LDREL) $(LDOUT) $<.obj -x $<
 	@echo building shared object $@

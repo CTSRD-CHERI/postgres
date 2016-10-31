@@ -153,7 +153,7 @@ ifeq ($(PORTNAME), freebsd)
     ifdef SO_MAJOR_VERSION
       shlib		= lib$(NAME)$(DLSUFFIX).$(SO_MAJOR_VERSION)
     endif
-    LINK.shared		= $(COMPILER) -shared
+    LINK.shared		= false
     ifdef soname
       LINK.shared	+= -Wl,-x,-soname,$(soname)
     endif
@@ -259,7 +259,7 @@ endif
 
 .PHONY: all-lib all-static-lib all-shared-lib
 
-all-lib: all-shared-lib
+# all-lib: all-shared-lib
 ifdef soname
 # no static library when building a dynamically loadable module
 all-lib: all-static-lib
@@ -437,7 +437,7 @@ endif # SHLIB_EXPORTS
 ##
 
 .PHONY: install-lib install-lib-static install-lib-shared installdirs-lib
-install-lib: install-lib-shared
+# install-lib: install-lib-shared
 ifdef soname
 install-lib: install-lib-static
 install-lib: install-lib-pc
