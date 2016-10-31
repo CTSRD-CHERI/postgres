@@ -24,4 +24,4 @@ gmake -C src/test/regress install-tests DESTDIR=${INSTALL_DIR}
 echo "$CHERISDK/objdump -xrslSD ./src/test/regress/pg_regress > pg_regress.cheri.dump"
 # gmake -C src/test/regress
 $CHERISDK/objdump -xrslSD ./src/test/regress/pg_regress > pg_regress.cheri.dump
-cp -fv run-postgres-tests-cheri.sh "${INSTALL_DIR}/run-postgres-tests-cheri.sh"
+cp -fv run-postgres-tests-cheri.sh "${INSTALL_DIR}/postgres/run-postgres-tests-cheri.sh"

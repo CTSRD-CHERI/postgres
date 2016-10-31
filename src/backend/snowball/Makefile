@@ -79,7 +79,7 @@ VPATH += $(srcdir)/libstemmer
 NAME := dict_snowball
 rpath =
 
-all: all-shared-lib $(SQLSCRIPT)
+all: all-static-lib $(SQLSCRIPT)
 
 include $(top_srcdir)/src/Makefile.shlib
 
