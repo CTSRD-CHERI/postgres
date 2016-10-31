@@ -3,11 +3,11 @@ OBJS		+= $(NAME).o $(WIN32RES)
 
 rpath =
 
-all: all-shared-lib
+all: all-static-lib
 
 include $(top_srcdir)/src/Makefile.shlib
 
-install: all installdirs install-lib
+install: all installdirs install-lib-static
 
 installdirs: installdirs-lib
 
