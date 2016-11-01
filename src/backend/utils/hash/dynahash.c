@@ -385,7 +385,7 @@ hash_create(const char *tabname, long nelem, HASHCTL *info, int flags)
 	if (flags & HASH_ALLOC)
 		hashp->alloc = info->alloc;
 	else
-		hashp->alloc = DynaHashAlloc;
+		hashp->alloc = DynaHashAlloc; // FIXME alignement
 
 	if (flags & HASH_SHARED_MEM)
 	{
