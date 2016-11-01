@@ -6,7 +6,7 @@ export PATH=${CHERISDK}:$PATH
 export CC=${CHERISDK}/clang
 export CXX=${CHERISDK}/clang++
 READLINE_INCLUDE_DIR=${CHERIBSD_SYSROOT}/usr/include/edit/
-COMMON_FLAGS="--sysroot=${CHERIBSD_SYSROOT} -B${CHERISDK} -mabi=sandbox -msoft-float -mxgot -O0"
+COMMON_FLAGS="--sysroot=${CHERIBSD_SYSROOT} -B${CHERISDK} -target cheri-unknown-freebsd -mabi=sandbox -msoft-float -mxgot -O0 -DUSE_ASSERT_CHECKING -G0"
 COMPILE_FLAGS="${COMMON_FLAGS} -isystem ${READLINE_INCLUDE_DIR} -Werror=cheri-capability-misuse -Werror=implicit-function-declaration -Werror=format -Werror=undefined-internal"
 # export CFLAGS=${COMPILE_FLAGS}
 # export CXXFLAGS=${COMPILE_FLAGS}
@@ -16,7 +16,7 @@ COMPILE_FLAGS="${COMMON_FLAGS} -isystem ${READLINE_INCLUDE_DIR} -Werror=cheri-ca
 # LDFLAGS_SL  extra linker flags for linking shared libraries only
 # env | sort
 # more minimal: --without-libxml --without-readline --without-gssapi
-env "CFLAGS=${COMPILE_FLAGS}" "CXXFLAGS=${COMPILE_FLAGS}" "CPPFLAGS=${COMMON_FLAGS}" "LDFLAGS=${COMMON_FLAGS} -pthread" "LDFLAGS_EX=-static" ./configure --host=cheri-unknown-freebsd --target=cheri-unknown-freebsd --build=x86_64-unknown-linux-gnu --prefix=/postgres/cheri/ --enable-debug --without-libxml --without-readline --without-gssapi
+env "ZIC=/usr/sbin/zic" "CFLAGS=${COMPILE_FLAGS}" "CXXFLAGS=${COMPILE_FLAGS}" "CPPFLAGS=${COMMON_FLAGS}" "LDFLAGS=${COMMON_FLAGS} -pthread" "LDFLAGS_EX=-static" ./configure --host=cheri-unknown-freebsd --target=cheri-unknown-freebsd --build=x86_64-unknown-linux-gnu --prefix=/postgres/cheri/ --enable-debug --without-libxml --without-readline --without-gssapi
 INSTALL_DIR=/build/ctsrd/postgres-build
 gmake -j8
 gmake install DESTDIR=${INSTALL_DIR}
