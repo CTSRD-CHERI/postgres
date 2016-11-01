@@ -293,7 +293,7 @@ ShmemInitHash(const char *name, /* table string name for shmem index */
 	 * The shared memory allocator must be specified too.
 	 */
 	infoP->dsize = infoP->max_dsize = hash_select_dirsize(max_size);
-	infoP->alloc = ShmemAlloc;
+	infoP->alloc = ShmemAlloc;  // XXXAR: FIXME: CHERI allocation alignment
 	hash_flags |= HASH_SHARED_MEM | HASH_ALLOC | HASH_DIRSIZE;
 
 	/* look it up in the shmem index */
