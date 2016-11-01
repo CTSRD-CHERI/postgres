@@ -118,7 +118,8 @@
  *--------------------
  */
 
-#define ALLOC_MINBITS		3	/* smallest chunk size is 8 bytes */
+// TODO: 3 normally, 4 cheri128, 5 cheri256
+#define ALLOC_MINBITS		5	/* smallest chunk size is 8 bytes */
 #define ALLOCSET_NUM_FREELISTS	11
 #define ALLOC_CHUNK_LIMIT	(1 << (ALLOCSET_NUM_FREELISTS-1+ALLOC_MINBITS))
 /* Size of largest chunk that we use a fixed size for */
