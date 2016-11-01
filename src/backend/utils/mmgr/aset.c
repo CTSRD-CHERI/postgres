@@ -117,7 +117,7 @@
  * set the allocChunkLimit to less than 8K, so as to avoid space wastage.)
  *--------------------
  */
-
+// FIXME: we need a CSetBounds somewhere here
 // TODO: 3 normally, 4 cheri128, 5 cheri256
 #define ALLOC_MINBITS		5	/* smallest chunk size is 32 bytes */
 // FIXME: reducing this by two to make the assertion pass is probably wrong
@@ -239,6 +239,7 @@ typedef struct AllocChunkData
  */
 #define AllocSetIsValid(set) PointerIsValid(set)
 
+// FIXME: this won't work on CHERI if we actually enforce bounds
 #define AllocPointerGetChunk(ptr)	\
 					((AllocChunk)(((char *)(ptr)) - ALLOC_CHUNKHDRSZ))
 #define AllocChunkGetPointer(chk)	\
