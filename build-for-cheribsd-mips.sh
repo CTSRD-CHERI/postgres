@@ -6,7 +6,7 @@ export PATH=${CHERISDK}:$PATH
 export CC=${CHERISDK}/clang
 export CXX=${CHERISDK}/clang++
 READLINE_INCLUDE_DIR=${CHERIBSD_SYSROOT}/usr/include/edit/
-COMMON_FLAGS="--sysroot=${CHERIBSD_SYSROOT} -B${CHERISDK} -mabi=64 -msoft-float -DUSE_ASSERT_CHECKING -G0"
+COMMON_FLAGS="--sysroot=${CHERIBSD_SYSROOT} -B${CHERISDK} -target mips64-unknown-freebsd -mabi=64 -msoft-float -DUSE_ASSERT_CHECKING -G0"
 COMPILE_FLAGS="${COMMON_FLAGS} -isystem ${READLINE_INCLUDE_DIR} -Werror=cheri-capability-misuse -Werror=implicit-function-declaration -Werror=format -Werror=undefined-internal"
 export CFLAGS=${COMPILE_FLAGS}
 export CXXFLAGS=${COMPILE_FLAGS}
