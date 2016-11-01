@@ -46,6 +46,7 @@
 
 #include "c.h"
 
+#ifndef __CHERI_PURE_CAPABILITY__
 
 static char *med3(char *a, char *b, char *c,
 	 int (*cmp) (const void *, const void *));
@@ -224,6 +225,14 @@ loop:SWAPINIT(a, es);
 		}
 	}
 }
+#else /* __CHERI_PURE_CAPABILITY__ */
+void
+pg_qsort(void *a, size_t n, size_t es, int (*cmp) (const void *, const void *))
+{
+#undef qsort
+	qsort(a, n, es, cmp);
+}
+#endif
 
 /*
  * qsort comparator wrapper for strcmp.
