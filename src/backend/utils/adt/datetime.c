@@ -4632,8 +4632,7 @@ ConvertTimeZoneAbbrevs(struct tzEntry *abbrevs, int n)
 	/* Space for fixed fields and datetkn array */
 	tbl_size = offsetof(TimeZoneAbbrevTable, abbrevs) +
 		n * sizeof(datetkn);
-	// tbl_size = MAXALIGN(tbl_size);
-	tbl_size = TYPEALIGN(_Alignof(void*), tbl_size);
+	tbl_size = MAXALIGN(tbl_size);
 	/* Count up space for dynamic abbreviations */
 	for (i = 0; i < n; i++)
 	{
@@ -4645,8 +4644,7 @@ ConvertTimeZoneAbbrevs(struct tzEntry *abbrevs, int n)
 
 			dsize = offsetof(DynamicZoneAbbrev, zone) +
 				strlen(abbr->zone) + 1;
-			// tbl_size += MAXALIGN(dsize);
-			tbl_size += TYPEALIGN(_Alignof(void*), dsize);
+			tbl_size += MAXALIGN(dsize);
 		}
 	}
 
@@ -4661,9 +4659,7 @@ ConvertTimeZoneAbbrevs(struct tzEntry *abbrevs, int n)
 	/* in this loop, tbl_size reprises the space calculation above */
 	tbl_size = offsetof(TimeZoneAbbrevTable, abbrevs) +
 		n * sizeof(datetkn);
-	// tbl_size = MAXALIGN(tbl_size);
-	// TODO: probably should just change MAXALIGN....
-	tbl_size = TYPEALIGN(_Alignof(void*), tbl_size);
+	tbl_size = MAXALIGN(tbl_size);
 	for (i = 0; i < n; i++)
 	{
 		struct tzEntry *abbr = abbrevs + i;
