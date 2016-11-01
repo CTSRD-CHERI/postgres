@@ -21,7 +21,15 @@ INSTALL_DIR=/exports/users/alr48
 gmake -j16
 gmake install DESTDIR=${INSTALL_DIR}
 gmake -C src/test/regress install-tests DESTDIR=${INSTALL_DIR}
-echo "$CHERISDK/objdump -xrslSD ./src/test/regress/pg_regress > pg_regress.cheri.dump"
-# gmake -C src/test/regress
-$CHERISDK/objdump -xrslSD ./src/test/regress/pg_regress > pg_regress.cheri.dump
+
+function do_objdump() {
+    echo "$CHERISDK/objdump -xrslSD  $1/$2 > $2.cheri.dump"
+    $CHERISDK/objdump -xrslSD $1/$2 > $2.cheri.dump
+}
+
+do_objdump ./src/test/regress pg_regress
+do_objdump ./src/bin/initdb initdb
+do_objdump ./src/backend postgres
+
+
 cp -fv run-postgres-tests-cheri.sh "${INSTALL_DIR}/postgres/run-postgres-tests-cheri.sh"
