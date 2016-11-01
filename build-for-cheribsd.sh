@@ -23,8 +23,10 @@ gmake install DESTDIR=${INSTALL_DIR}
 gmake -C src/test/regress install-tests DESTDIR=${INSTALL_DIR}
 
 function do_objdump() {
-    echo "$CHERISDK/objdump -xrslSD  $1/$2 > $2.cheri.dump"
-    $CHERISDK/objdump -xrslSD $1/$2 > $2.cheri.dump
+    #echo "$CHERISDK/objdump -xrslSD  $1/$2 > $2.cheri.dump"
+    #$CHERISDK/objdump -xrslSD $1/$2 > $2.cheri.dump
+    echo "$CHERISDK/objdump -rlSd  $1/$2 > $2.cheri.dump"
+    $CHERISDK/objdump -rlSd $1/$2 > $2.cheri.dump
 }
 
 do_objdump ./src/test/regress pg_regress
