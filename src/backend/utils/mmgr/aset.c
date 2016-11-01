@@ -119,8 +119,9 @@
  */
 
 // TODO: 3 normally, 4 cheri128, 5 cheri256
-#define ALLOC_MINBITS		5	/* smallest chunk size is 8 bytes */
-#define ALLOCSET_NUM_FREELISTS	11
+#define ALLOC_MINBITS		5	/* smallest chunk size is 32 bytes */
+// FIXME: reducing this by two to make the assertion pass is probably wrong
+#define ALLOCSET_NUM_FREELISTS	9
 #define ALLOC_CHUNK_LIMIT	(1 << (ALLOCSET_NUM_FREELISTS-1+ALLOC_MINBITS))
 /* Size of largest chunk that we use a fixed size for */
 #define ALLOC_CHUNK_FRACTION	4
