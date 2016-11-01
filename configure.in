@@ -1850,6 +1850,7 @@ if test x"$HAVE_LONG_LONG_INT_64" = x"yes" ; then
   AC_CHECK_ALIGNOF(long long int)
 fi
 AC_CHECK_ALIGNOF(double)
+AC_CHECK_ALIGNOF(void*)
 
 # Compute maximum alignment of any basic type.
 # We assume long's alignment is at least as strong as char, short, or int;
@@ -1861,6 +1862,10 @@ if test $MAX_ALIGNOF -lt $ac_cv_alignof_double ; then
 fi
 if test x"$HAVE_LONG_LONG_INT_64" = xyes && test $MAX_ALIGNOF -lt $ac_cv_alignof_long_long_int ; then
   MAX_ALIGNOF="$ac_cv_alignof_long_long_int"
+fi
+
+if test $MAX_ALIGNOF -lt $ac_cv_alignof_voidp ; then
+  MAX_ALIGNOF=$ac_cv_alignof_voidp
 fi
 AC_DEFINE_UNQUOTED(MAXIMUM_ALIGNOF, $MAX_ALIGNOF, [Define as the maximum alignment requirement of any C data type.])
 

@@ -14277,6 +14277,41 @@ cat >>confdefs.h <<_ACEOF
 _ACEOF
 
 
+# The cast to long int works around a bug in the HP C Compiler,
+# see AC_CHECK_SIZEOF for more information.
+{ $as_echo "$as_me:${as_lineno-$LINENO}: checking alignment of void*" >&5
+$as_echo_n "checking alignment of void*... " >&6; }
+if ${ac_cv_alignof_voidp+:} false; then :
+  $as_echo_n "(cached) " >&6
+else
+  if ac_fn_c_compute_int "$LINENO" "(long int) offsetof (ac__type_alignof_, y)" "ac_cv_alignof_voidp"        "$ac_includes_default
+#ifndef offsetof
+# define offsetof(type, member) ((char *) &((type *) 0)->member - (char *) 0)
+#endif
+typedef struct { char x; void* y; } ac__type_alignof_;"; then :
+
+else
+  if test "$ac_cv_type_voidp" = yes; then
+     { { $as_echo "$as_me:${as_lineno-$LINENO}: error: in \`$ac_pwd':" >&5
+$as_echo "$as_me: error: in \`$ac_pwd':" >&2;}
+as_fn_error 77 "cannot compute alignment of void*
+See \`config.log' for more details" "$LINENO" 5; }
+   else
+     ac_cv_alignof_voidp=0
+   fi
+fi
+
+fi
+{ $as_echo "$as_me:${as_lineno-$LINENO}: result: $ac_cv_alignof_voidp" >&5
+$as_echo "$ac_cv_alignof_voidp" >&6; }
+
+
+
+cat >>confdefs.h <<_ACEOF
+#define ALIGNOF_VOIDP $ac_cv_alignof_voidp
+_ACEOF
+
+
 
 # Compute maximum alignment of any basic type.
 # We assume long's alignment is at least as strong as char, short, or int;
@@ -14288,6 +14323,10 @@ if test $MAX_ALIGNOF -lt $ac_cv_alignof_double ; then
 fi
 if test x"$HAVE_LONG_LONG_INT_64" = xyes && test $MAX_ALIGNOF -lt $ac_cv_alignof_long_long_int ; then
   MAX_ALIGNOF="$ac_cv_alignof_long_long_int"
+fi
+
+if test $MAX_ALIGNOF -lt $ac_cv_alignof_voidp ; then
+  MAX_ALIGNOF=$ac_cv_alignof_voidp
 fi
 
 cat >>confdefs.h <<_ACEOF
