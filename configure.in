@@ -1746,10 +1746,10 @@ if test "$pgac_need_repl_snprintf" = no; then
   PGAC_FUNC_SNPRINTF_SIZE_T_SUPPORT
   if test "$pgac_cv_snprintf_size_t_support" != yes; then
     if test "$pgac_cv_snprintf_size_t_support" = cross; then
-      if test -z PRINTF_HAS_Z_MODIFIER; then
-        AC_MSG_ERROR([Cannot detect whether %z modifier works when cross-compiling! Set PRINTF_HAS_Z_MODIFIER to "yes" or "no".])
+      if test -z "$PRINTF_SIZE_T_SUPPORT"; then
+        AC_MSG_ERROR([Cannot detect whether %z modifier works when cross-compiling! Set PRINTF_SIZE_T_SUPPORT to "yes" or "no".])
       fi
-      if test "$PRINTF_HAS_Z_MODIFIER" = yes; then
+      if test "$PRINTF_SIZE_T_SUPPORT" = yes; then
         pgac_need_repl_snprintf=no
       else
         pgac_need_repl_snprintf=yes
