@@ -13873,6 +13873,11 @@ $as_echo "$pgac_cv_snprintf_size_t_support" >&6; }
   fi
 fi
 
+{ $as_echo "$as_me:${as_lineno-$LINENO}: checking whether replacement snprintf() functions are needed" >&5
+$as_echo_n "checking whether replacement snprintf() functions are needed... " >&6; }
+{ $as_echo "$as_me:${as_lineno-$LINENO}: result: $pgac_need_repl_snprintf" >&5
+$as_echo "$pgac_need_repl_snprintf" >&6; }
+
 # Now we have checked all the reasons to replace snprintf
 if test $pgac_need_repl_snprintf = yes; then
 
