@@ -13866,7 +13866,18 @@ fi
 $as_echo "$pgac_cv_snprintf_size_t_support" >&6; }
 
   if test "$pgac_cv_snprintf_size_t_support" != yes; then
-    pgac_need_repl_snprintf=yes
+    if test "$pgac_cv_snprintf_size_t_support" = cross; then
+      if test -z PRINTF_HAS_Z_MODIFIER; then
+        as_fn_error $? "Cannot detect whether %z modifier works when cross-compiling! Set PRINTF_HAS_Z_MODIFIER to \"yes\" or \"no\"." "$LINENO" 5
+      fi
+      if test "$PRINTF_HAS_Z_MODIFIER" = yes; then
+        pgac_need_repl_snprintf=no
+      else
+        pgac_need_repl_snprintf=yes
+      fi
+    else
+      pgac_need_repl_snprintf=yes
+    fi
   fi
 fi
 
