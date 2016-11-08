@@ -1808,6 +1808,9 @@ if test "$pgac_need_repl_snprintf" = no; then
   fi
 fi
 
+AC_MSG_CHECKING([whether replacement snprintf() functions are needed])
+AC_MSG_RESULT([$pgac_need_repl_snprintf])
+
 # Now we have checked all the reasons to replace snprintf
 if test $pgac_need_repl_snprintf = yes; then
   AC_DEFINE(USE_REPL_SNPRINTF, 1, [Use replacement snprintf() functions.])
