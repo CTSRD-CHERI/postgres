@@ -16,7 +16,7 @@ COMPILE_FLAGS="${COMMON_FLAGS} -isystem ${READLINE_INCLUDE_DIR} -Werror=cheri-ca
 # LDFLAGS_SL  extra linker flags for linking shared libraries only
 # env | sort
 # more minimal: --without-libxml --without-readline --without-gssapi
-env "CFLAGS=${COMPILE_FLAGS}" "CXXFLAGS=${COMPILE_FLAGS}" "CPPFLAGS=${COMMON_FLAGS}" "LDFLAGS=${COMMON_FLAGS} -pthread" "LDFLAGS_EX=-static" ./configure --host=cheri-unknown-freebsd --target=cheri-unknown-freebsd --build=x86_64-unknown-freebsd --prefix=/postgres/cheri/ --enable-debug --without-libxml --without-readline --without-gssapi
+env PRINTF_SIZE_T_SUPPORT=yes "CFLAGS=${COMPILE_FLAGS}" "CXXFLAGS=${COMPILE_FLAGS}" "CPPFLAGS=${COMMON_FLAGS}" "LDFLAGS=${COMMON_FLAGS} -pthread" "LDFLAGS_EX=-static" ./configure --host=cheri-unknown-freebsd --target=cheri-unknown-freebsd --build=x86_64-unknown-freebsd --prefix=/postgres/cheri/ --enable-debug --without-libxml --without-readline --without-gssapi
 INSTALL_DIR=/exports/users/alr48
 gmake -j16
 gmake install DESTDIR=${INSTALL_DIR}

@@ -17,7 +17,7 @@ export LDFLAGS="${COMMON_FLAGS} -pthread"
 # env | sort
 # ./configure --host=cheri-unknown-freebsd --target=cheri-unknown-freebsd --build=x86_64-unknown-freebsd --prefix=/home/alr48/postgres --enable-debug
 # more minimal: --without-libxml --without-readline --without-gssapi
-./configure --host=mips64-unknown-freebsd --target=mips64-unknown-freebsd --build=x86_64-unknown-freebsd --prefix=/postgres/mips --enable-debug --without-libxml --without-readline --without-gssapi --enable-cassert --disable-nls --without-ldap --without-libxslt
+env PRINTF_SIZE_T_SUPPORT=yes ./configure --host=mips64-unknown-freebsd --target=mips64-unknown-freebsd --build=x86_64-unknown-freebsd --prefix=/postgres/mips --enable-debug --without-libxml --without-readline --without-gssapi --enable-cassert --disable-nls --without-ldap --without-libxslt
 INSTALL_DIR=/exports/users/alr48
 gmake -j16
 gmake install DESTDIR=${INSTALL_DIR}
