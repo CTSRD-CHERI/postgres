@@ -128,6 +128,9 @@ extern unsigned char pg_ascii_toupper(unsigned char ch);
 extern unsigned char pg_ascii_tolower(unsigned char ch);
 
 #ifdef USE_REPL_SNPRINTF
+#ifdef __CHERI_PURE_CAPABILITY__
+#error "MUST NOT USE_REPL_SNPRINTF for CHERIABI"
+#endif
 
 /*
  * Versions of libintl >= 0.13 try to replace printf() and friends with
