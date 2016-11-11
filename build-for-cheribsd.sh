@@ -30,8 +30,10 @@ function do_objdump() {
 }
 
 #do_objdump ./src/test/regress pg_regress
-#do_objdump ./src/bin/initdb initdb
+do_objdump ./src/bin/initdb initdb
 #do_objdump ./src/backend postgres
 
 
 cp -fv run-postgres-tests-cheri.sh "${INSTALL_DIR}/postgres/run-postgres-tests-cheri.sh"
+cp -fv run-initdb-cheri.sh "${INSTALL_DIR}/postgres/run-initdb-cheri.sh"
+
