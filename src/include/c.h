@@ -1101,6 +1101,20 @@ extern int	fdatasync(int fildes);
 #define NON_EXEC_STATIC static
 #endif
 
+/* typedef for virtual addresses */
+#if defined(__has_attribute) && __has_attribute(memory_address)
+#define	pg_attribute_memory_address() __attribute__((memory_address))
+#else
+#define	pg_attribute_memory_address()
+#endif
+
+#ifdef __CHERI_PURE_CAPABILITY__
+typedef	pg_attribute_memory_address() __uintcap_t	pg_vaddr_t;
+#else
+typedef	pg_attribute_memory_address() uintptr_t		pg_vaddr_t;
+#endif
+
+
 /* /port compatibility functions */
 #include "port.h"
 
