@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -e
-CHERISDK="/build/ctsrd/sdk256/bin"
-CHERIBSD_SYSROOT="/build/ctsrd/sdk256/sysroot"
+CHERISDK="${CHERI_SDK:-/build/ctsrd/sdk256}/bin"
+CHERIBSD_SYSROOT="${CHERISDK}/../sysroot"
 export PATH=${CHERISDK}:$PATH
 export CC=${CHERISDK}/clang
 export CXX=${CHERISDK}/clang++
@@ -17,7 +17,7 @@ COMPILE_FLAGS="${COMMON_FLAGS} -isystem ${READLINE_INCLUDE_DIR} -Werror=cheri-ca
 # env | sort
 # more minimal: --without-libxml --without-readline --without-gssapi
 env PRINTF_SIZE_T_SUPPORT=yes "ZIC=/usr/sbin/zic" "CFLAGS=${COMPILE_FLAGS}" "CXXFLAGS=${COMPILE_FLAGS}" "CPPFLAGS=${COMMON_FLAGS}" "LDFLAGS=${COMMON_FLAGS} -pthread" "LDFLAGS_EX=-static" ./configure --host=cheri-unknown-freebsd --target=cheri-unknown-freebsd --build=x86_64-unknown-linux-gnu --prefix=/postgres/cheri/ --enable-debug --without-libxml --without-readline --without-gssapi
-INSTALL_DIR=/build/ctsrd/postgres-build
+INSTALL_DIR=${PSOTGRES_INSTALL_DIR:-/build/ctsrd/postgres-install}
 gmake -j8
 gmake install DESTDIR=${INSTALL_DIR}
 gmake -C src/test/regress install-tests DESTDIR=${INSTALL_DIR}
