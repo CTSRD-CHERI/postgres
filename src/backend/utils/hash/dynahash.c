@@ -1631,8 +1631,7 @@ element_alloc(HTAB *hashp, int nelem, int freelist_idx)
 		return false;
 
 	/* Each element has a HASHELEMENT header plus user data. */
-	// elementSize = MAXALIGN(sizeof(HASHELEMENT)) + MAXALIGN(hctl->entrysize);
-	elementSize = TYPEALIGN(_Alignof(void*), sizeof(HASHELEMENT) + MAXALIGN(hctl->entrysize));
+	elementSize = MAXALIGN(sizeof(HASHELEMENT)) + MAXALIGN(hctl->entrysize);
 
 	CurrentDynaHashCxt = hashp->hcxt;
 	firstElement = (HASHELEMENT *) hashp->alloc(nelem * elementSize);
