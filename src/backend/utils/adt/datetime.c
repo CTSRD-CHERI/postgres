@@ -4683,7 +4683,7 @@ ConvertTimeZoneAbbrevs(struct tzEntry *abbrevs, int n)
 
 			dsize = offsetof(DynamicZoneAbbrev, zone) +
 				strlen(abbr->zone) + 1;
-			tbl_size += TYPEALIGN(_Alignof(void*), dsize);
+			tbl_size += MAXALIGN(dsize);
 		}
 		else
 		{
