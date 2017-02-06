@@ -1,12 +1,15 @@
 #!/usr/bin/env bash
 set -e
-CHERISDK="/home/alr48/cheri/output/sdk256/bin"
-CHERIBSD_SYSROOT="/home/alr48/cheri/output/sdk256/sysroot"
-export PATH=${CHERISDK}:$PATH
+#CHERI_ROOT="/home/alr48/cheri"
+CHERI_ROOT="/home/trasz/cheri"
+CHERISDK="${CHERI_ROOT}/output/sdk256/bin"
+CHERILDDIR="${CHERI_ROOT}/build/cheribsd-obj-256/mips.mips64/usr/home/trasz/cheri/cheribsd/tmp/usr/bin/"
+CHERIBSD_SYSROOT="${CHERI_ROOT}/output/sdk256/sysroot"
+export PATH=${CHERISDK}:${CHERILDDIR}:$PATH
 export CC=${CHERISDK}/clang
 export CXX=${CHERISDK}/clang++
 READLINE_INCLUDE_DIR=${CHERIBSD_SYSROOT}/usr/include/edit/
-COMMON_FLAGS="-pipe --sysroot=${CHERIBSD_SYSROOT} -B${CHERISDK} -target cheri-unknown-freebsd -mabi=sandbox -msoft-float -mxgot -O0 -DUSE_ASSERT_CHECKING -G0 -integrated-as"
+COMMON_FLAGS="-pipe --sysroot=${CHERIBSD_SYSROOT} -B${CHERILDDIR} -target cheri-unknown-freebsd -mabi=sandbox -msoft-float -mxgot -O0 -DUSE_ASSERT_CHECKING -G0 -integrated-as"
 COMPILE_FLAGS="${COMMON_FLAGS} -isystem ${READLINE_INCLUDE_DIR} -Werror=cheri-capability-misuse -Werror=implicit-function-declaration -Werror=format -Werror=undefined-internal"
 # export CFLAGS=${COMPILE_FLAGS}
 # export CXXFLAGS=${COMPILE_FLAGS}
@@ -18,8 +21,10 @@ COMPILE_FLAGS="${COMMON_FLAGS} -isystem ${READLINE_INCLUDE_DIR} -Werror=cheri-ca
 # more minimal: --without-libxml --without-readline --without-gssapi
 # TODO: static? "LDFLAGS_EX=-static"
 env PRINTF_SIZE_T_SUPPORT=yes "CFLAGS=${COMPILE_FLAGS}" "CXXFLAGS=${COMPILE_FLAGS}" "CPPFLAGS=${COMMON_FLAGS}" "LDFLAGS=${COMMON_FLAGS} -pthread -Wl,-melf64btsmip_cheri_fbsd" sh ./configure --host=cheri-unknown-freebsd --target=cheri-unknown-freebsd --build=x86_64-unknown-freebsd --prefix=/postgres/cheri/ --enable-debug --without-libxml --without-readline --without-gssapi
-INSTALL_DIR=/exports/users/alr48
-gmake -j16
+#INSTALL_DIR=/exports/users/alr48
+INSTALL_DIR=${CHERI_ROOT}/output/rootfs256
+#gmake -j16
+gmake
 gmake install DESTDIR=${INSTALL_DIR}
 gmake -C src/test/regress install-tests DESTDIR=${INSTALL_DIR}
 

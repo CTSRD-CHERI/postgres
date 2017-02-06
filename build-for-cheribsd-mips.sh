@@ -1,7 +1,9 @@
 #!/usr/bin/env bash
 set -e
-CHERISDK="/home/alr48/cheri/output/sdk256/bin"
-CHERIBSD_SYSROOT="/home/alr48/cheri/output/sdk256/sysroot"
+#CHERI_ROOT="/home/alr48/cheri"
+CHERI_ROOT="/home/trasz/cheri"
+CHERISDK="${CHERI_ROOT}/output/sdk256/bin"
+CHERIBSD_SYSROOT="${CHERI_ROOT}/output/sdk256/sysroot"
 export PATH=${CHERISDK}:$PATH
 export CC=${CHERISDK}/clang
 export CXX=${CHERISDK}/clang++

@@ -96,7 +96,7 @@ typedef struct LWLock
  * for the possibility that it might be 64.
  */
 #define LWLOCK_PADDED_SIZE	PG_CACHE_LINE_SIZE
-#define LWLOCK_MINIMAL_SIZE (sizeof(LWLock) <= 32 ? 32 : 64)
+#define LWLOCK_MINIMAL_SIZE (sizeof(LWLock) <= 32 ? 32 : 128)
 
 /* LWLock, padded to a full cache line size */
 typedef union LWLockPadded
