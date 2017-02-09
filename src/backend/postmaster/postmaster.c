@@ -1747,9 +1747,12 @@ ServerLoop(void)
 			(AutoVacuumingActive() || start_autovac_launcher) &&
 			pmState == PM_RUN)
 		{
+#if 0
+			// XXX: Disable for now; there's a theory that vacuuming leads to crashes.
 			AutoVacPID = StartAutoVacLauncher();
 			if (AutoVacPID != 0)
 				start_autovac_launcher = false; /* signal processed */
+#endif
 		}
 
 		/* If we have lost the stats collector, try to start a new one */
@@ -2802,7 +2805,10 @@ reaper(SIGNAL_ARGS)
 			 * situation, some of them may be alive already.
 			 */
 			if (!IsBinaryUpgrade && AutoVacuumingActive() && AutoVacPID == 0)
+#if 0
+				// XXX: Disable for now; there's a theory that vacuuming leads to crashes.
 				AutoVacPID = StartAutoVacLauncher();
+#endif
 			if (PgArchStartupAllowed() && PgArchPID == 0)
 				PgArchPID = pgarch_start();
 			if (PgStatPID == 0)
@@ -4975,6 +4981,7 @@ sigusr1_handler(SIGNAL_ARGS)
 		signal_child(SysLoggerPID, SIGUSR1);
 	}
 
+#if 0
 	if (CheckPostmasterSignal(PMSIGNAL_START_AUTOVAC_LAUNCHER) &&
 		Shutdown == NoShutdown)
 	{
@@ -4996,6 +5003,7 @@ sigusr1_handler(SIGNAL_ARGS)
 		/* The autovacuum launcher wants us to start a worker process. */
 		StartAutovacuumWorker();
 	}
+#endif
 
 	if (CheckPostmasterSignal(PMSIGNAL_START_WALRECEIVER) &&
 		WalReceiverPID == 0 &&

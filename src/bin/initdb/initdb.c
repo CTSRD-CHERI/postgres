@@ -1676,9 +1676,9 @@ setup_depend(FILE *cmdfd)
 		 * must be the only entries for their objects.
 		 */
 		"DELETE FROM pg_depend;\n\n",
-		"VACUUM pg_depend;\n\n",
+		//"VACUUM pg_depend;\n\n",
 		"DELETE FROM pg_shdepend;\n\n",
-		"VACUUM pg_shdepend;\n\n",
+		//"VACUUM pg_shdepend;\n\n",
 
 		"INSERT INTO pg_depend SELECT 0,0,0, tableoid,oid,0, 'p' "
 		" FROM pg_class;\n\n",
@@ -2290,7 +2290,7 @@ make_template0(FILE *cmdfd)
 		/*
 		 * Finally vacuum to clean up dead rows in pg_database
 		 */
-		"VACUUM pg_database;\n\n",
+		//"VACUUM pg_database;\n\n",
 		NULL
 	};
 
@@ -3348,7 +3348,16 @@ initialize_data_directory(void)
 	load_plpgsql(cmdfd);
 #endif
 
+#if 0
+	// VACUUM is believed to be related to failures like this:
+	// performing post-bootstrap initialization ... About to run "/postgres/cheri/bin/postgres" --single -F -O -j -c search_path=pg_catalog -c exit_on_error=true template1 >/dev/null
+	// No usable system locales were found.
+	// Use the option "--debug" to see details.
+	// CHERI cause: ExcCode: 0x02 RegNum: $c04 (tag violation)
+	// Feb  9 15:18:41 qemu-cheri-trasz kernel: USER_CHERI_EXCEPTION: pid 631 tid 100042 (postgres), uid 1001: CP2 fault (type 0x32)
+	// child process was terminated by signal 34: In-address space security exception
 	vacuum_db(cmdfd);
+#endif
 
 	make_template0(cmdfd);
 
