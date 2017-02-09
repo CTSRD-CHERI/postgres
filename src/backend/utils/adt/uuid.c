@@ -387,7 +387,7 @@ uuid_abbrev_convert(Datum original, SortSupport ssup)
 	{
 		uint32		tmp;
 
-#if SIZEOF_DATUM == 8
+#if SIZEOF_DATUM >= 8
 		tmp = (uint32) res ^ (uint32) ((uint64) res >> 32);
 #else							/* SIZEOF_DATUM != 8 */
 		tmp = (uint32) res;

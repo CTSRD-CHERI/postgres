@@ -285,8 +285,8 @@ TypeCreate(Oid newTypeOid,
 						 errmsg("alignment \"%c\" is invalid for passed-by-value type of size %d",
 								alignment, internalSize)));
 		}
-#if SIZEOF_DATUM == 8
-		else if (internalSize == (int16) sizeof(Datum))
+#if SIZEOF_DATUM >= 8
+		else if (internalSize == (int16) sizeof(int64))
 		{
 			if (alignment != 'd')
 				ereport(ERROR,

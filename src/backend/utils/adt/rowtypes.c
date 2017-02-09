@@ -1477,7 +1477,7 @@ record_image_cmp(FunctionCallInfo fcinfo)
 										 GET_4_BYTES(values2[i2])) ? -1 : 1;
 						}
 						break;
-#if SIZEOF_DATUM == 8
+#if SIZEOF_DATUM >= 8
 					case 8:
 						if (GET_8_BYTES(values1[i1]) !=
 							GET_8_BYTES(values2[i2]))
@@ -1732,7 +1732,7 @@ record_image_eq(PG_FUNCTION_ARGS)
 						result = (GET_4_BYTES(values1[i1]) ==
 								  GET_4_BYTES(values2[i2]));
 						break;
-#if SIZEOF_DATUM == 8
+#if SIZEOF_DATUM >= 8
 					case 8:
 						result = (GET_8_BYTES(values1[i1]) ==
 								  GET_8_BYTES(values2[i2]));

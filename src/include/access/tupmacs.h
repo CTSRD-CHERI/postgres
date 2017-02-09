@@ -39,7 +39,7 @@
 /*
  * Same, but work from byval/len parameters rather than Form_pg_attribute.
  */
-#if SIZEOF_DATUM == 8
+#if SIZEOF_DATUM >= 8
 
 #define fetch_att(T,attbyval,attlen) \
 ( \
@@ -88,7 +88,7 @@
 	: \
 	PointerGetDatum((char *) (T)) \
 )
-#endif   /* SIZEOF_DATUM == 8 */
+#endif   /* SIZEOF_DATUM >= 8 */
 
 /*
  * att_align_datum aligns the given offset as needed for a datum of alignment
@@ -193,7 +193,7 @@
  * distinguish by-val and by-ref cases anyway, and so a do-it-all macro
  * wouldn't be convenient.
  */
-#if SIZEOF_DATUM == 8
+#if SIZEOF_DATUM >= 8
 
 #define store_att_byval(T,newdatum,attlen) \
 	do { \
@@ -208,7 +208,7 @@
 			case sizeof(int32): \
 				*(int32 *) (T) = DatumGetInt32(newdatum); \
 				break; \
-			case sizeof(Datum): \
+			case sizeof(int64): \
 				*(Datum *) (T) = (newdatum); \
 				break; \
 			default: \
@@ -238,6 +238,6 @@
 				break; \
 		} \
 	} while (0)
-#endif   /* SIZEOF_DATUM == 8 */
+#endif   /* SIZEOF_DATUM >= 8 */
 
 #endif

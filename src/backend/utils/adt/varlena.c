@@ -2282,7 +2282,7 @@ varstr_abbrev_convert(Datum original, SortSupport ssup)
 	addHyperLogLog(&sss->full_card, hash);
 
 	/* Hash abbreviated key */
-#if SIZEOF_DATUM == 8
+#if SIZEOF_DATUM >= 8
 	{
 		uint32		lohalf,
 					hihalf;
