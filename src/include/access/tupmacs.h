@@ -209,7 +209,7 @@
 				*(int32 *) (T) = DatumGetInt32(newdatum); \
 				break; \
 			case sizeof(int64): \
-				*(Datum *) (T) = (newdatum); \
+				*(int64 *) (T) = DatumGetInt64(newdatum); \
 				break; \
 			default: \
 				elog(ERROR, "unsupported byval length: %d", \
