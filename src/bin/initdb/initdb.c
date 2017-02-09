@@ -3328,15 +3328,25 @@ initialize_data_directory(void)
 
 	setup_collation(cmdfd);
 
+#if 0
+	// Those require loadable modules, won't work when statically linked.
+	// Fails like this:
+	// FATAL:  could not access file "$libdir/ascii_and_mic": No such file or directory
 	setup_conversion(cmdfd);
 
 	setup_dictionary(cmdfd);
+#endif
 
 	setup_privileges(cmdfd);
 
 	setup_schema(cmdfd);
 
+#if 0
+	// Requires loadable modules, fails like this:
+	// FATAL:  could not access file "$libdir/plpgsql": No such file or directory
+	// STATEMENT:  CREATE EXTENSION plpgsql;
 	load_plpgsql(cmdfd);
+#endif
 
 	vacuum_db(cmdfd);
 
