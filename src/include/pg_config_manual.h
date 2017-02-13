@@ -235,6 +235,7 @@
  * wasted memory. The default is 128, which should be large enough for all
  * supported platforms.
  */
+/* XXXAR: 64 bytes???? */
 #define PG_CACHE_LINE_SIZE		128
 
 /*
