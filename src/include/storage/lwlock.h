@@ -55,13 +55,17 @@ typedef struct LWLockTranche
  * structure directly, but we have to declare it here to allow LWLocks to be
  * incorporated into other data structures.
  */
+/* XXXAR: this is too big on CHERI256:  2 + 4 + (2* 32) + 4 + 32 + padding.... */
+/* Simplest solution seems to be reordering */
 typedef struct LWLock
 {
 	uint16		tranche;		/* tranche ID */
 	pg_atomic_uint32 state;		/* state of exclusive/nonexclusive lockers */
-	dlist_head	waiters;		/* list of waiting PGPROCs */
 #ifdef LOCK_DEBUG
 	pg_atomic_uint32 nwaiters;	/* number of waiters */
+#endif
+	dlist_head	waiters;		/* list of waiting PGPROCs */
+#ifdef LOCK_DEBUG
 	struct PGPROC *owner;		/* last exclusive owner of the lock */
 #endif
 } LWLock;
@@ -96,7 +100,7 @@ typedef struct LWLock
  * for the possibility that it might be 64.
  */
 #define LWLOCK_PADDED_SIZE	PG_CACHE_LINE_SIZE
-#define LWLOCK_MINIMAL_SIZE (sizeof(LWLock) <= 32 ? 32 : 128)
+#define LWLOCK_MINIMAL_SIZE (sizeof(LWLock) <= 32 ? 32 : (sizeof(LWLock) <= 64 ? 64 : 128))
 
 /* LWLock, padded to a full cache line size */
 typedef union LWLockPadded
