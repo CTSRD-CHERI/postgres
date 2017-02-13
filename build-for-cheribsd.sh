@@ -1,7 +1,6 @@
 #!/usr/bin/env bash
 set -e
-#CHERI_ROOT="/home/alr48/cheri"
-CHERI_ROOT="/home/trasz/cheri"
+CHERI_ROOT="${HOME}/cheri"
 CHERISDK="${CHERI_ROOT}/output/sdk256/bin"
 CHERIBSD_SYSROOT="${CHERI_ROOT}/output/sdk256/sysroot"
 export PATH=${CHERISDK}:${CHERILDDIR}:$PATH
