@@ -32,25 +32,26 @@ print(args)
 cheri_root = Path(args.cheri_root)
 if args.build_target == "cheri256":
     cheri_sdk = cheri_root / "output/sdk256"
+    target_flags = ["-target", "cheri-unknown-freebsd", "-mabi=sandbox"]
 elif args.build_target == "cheri128":
+    target_flags = ["-target", "cheri-unknown-freebsd", "-mabi=sandbox", "-mllvm", "-cheri128"]
     cheri_sdk = cheri_root / "output/sdk128"
 elif args.build_target == "mips":
+    target_flags = ["-target", "mips64-unknown-freebsd", "-mabi=n64"]
     sys.exit("Building for MIPS not implemented yet")
 else:
     sys.exit("logic error")
 cheri_sysroot = cheri_sdk / "sysroot"
+optlevel = "-O0"
 common_flags = [
     "-pipe",
-    "--sysroot=" + str(cheri_sysroot),
-    "-B" + str(cheri_sdk),
-    "-target", "cheri-unknown-freebsd",
-    "-mabi=sandbox",
     "-msoft-float",
     "-mxgot",
     "-static",
-    "-DUSE_ASSERT_CHECKING",
+    # "-DUSE_ASSERT_CHECKING",
     "-G0",
     "-integrated-as",
+    optlevel
 ]
 warning_flags = [
     "-Werror=cheri-capability-misuse",
@@ -59,13 +60,13 @@ warning_flags = [
     "-Werror=undefined-internal",
     "-Werror=incompatible-pointer-types",
 ]
-optlevel = "-O0"
 readline_include_dir = str(cheri_sysroot / "usr/include/edit")
-compile_flags = common_flags + warning_flags + ["-isystem ", readline_include_dir, optlevel]
+compiler_path_flags = ["--sysroot=" + str(cheri_sysroot), "-B" + str(cheri_sdk), "-isystem ", readline_include_dir]
+compile_flags = compiler_path_flags + common_flags + warning_flags + target_flags
 # LDFLAGS_EX  extra linker flags for linking executables only
 # LDFLAGS_SL  extra linker flags for linking shared libraries only
 # TODO: try building shared once linker works
-ld_flags = common_flags + ["-pthread", "-Wl,-melf64btsmip_cheri_fbsd", "-static"]
+ld_flags = ["-pthread", "-Wl,-melf64btsmip_cheri_fbsd", "-static"]
 os.environ["CC"] = str(cheri_sdk / "bin/clang")
 os.environ["CXX"] = str(cheri_sdk / "bin/clang++")
 os.environ["PATH"] = "%s:%s" % (cheri_sdk / "bin", os.environ["PATH"])
@@ -78,7 +79,7 @@ configure_env.update({
     "PRINTF_SIZE_T_SUPPORT": "yes",
     "CFLAGS": " ".join(compile_flags),
     "CXXFLAGS": " ".join(compile_flags),
-    "CPPFLAGS": " ".join(compile_flags),
+    "CPPFLAGS": " ".join(compiler_path_flags),
     "LDFLAGS": " ".join(ld_flags),
 
 })
