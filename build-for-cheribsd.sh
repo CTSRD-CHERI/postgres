@@ -3,13 +3,12 @@ set -e
 #CHERI_ROOT="/home/alr48/cheri"
 CHERI_ROOT="/home/trasz/cheri"
 CHERISDK="${CHERI_ROOT}/output/sdk256/bin"
-CHERILDDIR="${CHERI_ROOT}/build/cheribsd-obj-256/mips.mips64/usr/home/trasz/cheri/cheribsd/tmp/usr/bin/"
 CHERIBSD_SYSROOT="${CHERI_ROOT}/output/sdk256/sysroot"
 export PATH=${CHERISDK}:${CHERILDDIR}:$PATH
 export CC=${CHERISDK}/clang
 export CXX=${CHERISDK}/clang++
 READLINE_INCLUDE_DIR=${CHERIBSD_SYSROOT}/usr/include/edit/
-COMMON_FLAGS="-pipe --sysroot=${CHERIBSD_SYSROOT} -B${CHERILDDIR} -target cheri-unknown-freebsd -mabi=sandbox -msoft-float -mxgot -O0 -static -DUSE_ASSERT_CHECKING  -G0 -integrated-as"
+COMMON_FLAGS="-pipe --sysroot=${CHERIBSD_SYSROOT} -B${CHERISDK} -target cheri-unknown-freebsd -mabi=sandbox -msoft-float -mxgot -O0 -static -DUSE_ASSERT_CHECKING  -G0 -integrated-as"
 COMPILE_FLAGS="${COMMON_FLAGS} -isystem ${READLINE_INCLUDE_DIR} -Werror=cheri-capability-misuse -Werror=implicit-function-declaration -Werror=format -Werror=undefined-internal"
 # export CFLAGS=${COMPILE_FLAGS}
 # export CXXFLAGS=${COMPILE_FLAGS}
