@@ -1704,7 +1704,7 @@ static void compute_scalar_stats(VacAttrStatsP stats,
 					 AnalyzeAttrFetchFunc fetchfunc,
 					 int samplerows,
 					 double totalrows);
-static int	compare_scalars(const void *a, const void *b, void *arg);
+static QSORT_ARG_COMPARATOR_FUNC(compare_scalars, a, b);
 static int	compare_mcvs(const void *a, const void *b);
 
 
@@ -2779,8 +2779,7 @@ compute_scalar_stats(VacAttrStatsP stats,
  * tupno that that item's datum has been found to be equal to.  This allows
  * us to avoid additional comparisons in compute_scalar_stats().
  */
-static int
-compare_scalars(const void *a, const void *b, void *arg)
+static QSORT_ARG_COMPARATOR_FUNC(compare_scalars, a, b)
 {
 	Datum		da = ((const ScalarItem *) a)->value;
 	int			ta = ((const ScalarItem *) a)->tupno;

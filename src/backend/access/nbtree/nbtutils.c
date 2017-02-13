@@ -40,7 +40,7 @@ static Datum _bt_find_extreme_element(IndexScanDesc scan, ScanKey skey,
 static int _bt_sort_array_elements(IndexScanDesc scan, ScanKey skey,
 						bool reverse,
 						Datum *elems, int nelems);
-static int	_bt_compare_array_elements(const void *a, const void *b, void *arg);
+static QSORT_ARG_COMPARATOR_FUNC(_bt_compare_array_elements, a, b);
 static bool _bt_compare_scankey_args(IndexScanDesc scan, ScanKey op,
 						 ScanKey leftarg, ScanKey rightarg,
 						 bool *result);
@@ -495,8 +495,7 @@ _bt_sort_array_elements(IndexScanDesc scan, ScanKey skey,
 /*
  * qsort_arg comparator for sorting array elements
  */
-static int
-_bt_compare_array_elements(const void *a, const void *b, void *arg)
+static QSORT_ARG_COMPARATOR_FUNC(_bt_compare_array_elements, a, b)
 {
 	Datum		da = *((const Datum *) a);
 	Datum		db = *((const Datum *) b);

@@ -401,8 +401,7 @@ typedef struct
 	bool		haveDups;
 } cmpEntriesArg;
 
-static int
-cmpEntries(const void *a, const void *b, void *arg)
+static QSORT_ARG_COMPARATOR_FUNC(cmpEntries, a, b)
 {
 	const keyEntryData *aa = (const keyEntryData *) a;
 	const keyEntryData *bb = (const keyEntryData *) b;
