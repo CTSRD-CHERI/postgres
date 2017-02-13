@@ -55,7 +55,7 @@ static void appendKey(JsonbParseState *pstate, JsonbValue *scalarVal);
 static void appendValue(JsonbParseState *pstate, JsonbValue *scalarVal);
 static void appendElement(JsonbParseState *pstate, JsonbValue *scalarVal);
 static int	lengthCompareJsonbStringValue(const void *a, const void *b);
-static int	lengthCompareJsonbPair(const void *a, const void *b, void *arg);
+static QSORT_ARG_COMPARATOR_FUNC(lengthCompareJsonbPair, a, b);
 static void uniqueifyJsonbObject(JsonbValue *object);
 static JsonbValue *pushJsonbValueScalar(JsonbParseState **pstate,
 					 JsonbIteratorToken seq,
@@ -1747,9 +1747,9 @@ lengthCompareJsonbStringValue(const void *a, const void *b)
  *
  * Pairs with equals keys are ordered such that the order field is respected.
  */
-static int
-lengthCompareJsonbPair(const void *a, const void *b, void *binequal)
+static QSORT_ARG_COMPARATOR_FUNC(lengthCompareJsonbPair, a, b)
 {
+	void *binequal = arg;
 	const JsonbPair *pa = (const JsonbPair *) a;
 	const JsonbPair *pb = (const JsonbPair *) b;
 	int			res;

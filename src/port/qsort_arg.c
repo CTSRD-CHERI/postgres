@@ -46,6 +46,8 @@
 
 #include "c.h"
 
+#ifndef __FreeBSD__
+#warning "using postgres custom qsort_arg function"
 
 static char *med3(char *a, char *b, char *c,
 	 qsort_arg_comparator cmp, void *arg);
@@ -224,3 +226,5 @@ loop:SWAPINIT(a, es);
 		}
 	}
 }
+
+#endif

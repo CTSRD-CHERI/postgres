@@ -60,7 +60,7 @@ static float *calc_distr(const float *p, int n, int m, float rest);
 static int	floor_log2(uint32 n);
 static bool find_next_mcelem(Datum *mcelem, int nmcelem, Datum value,
 				 int *index, FmgrInfo *cmpfunc);
-static int	element_compare(const void *key1, const void *key2, void *arg);
+static QSORT_ARG_COMPARATOR_FUNC(element_compare, key1, key2);
 static int	float_compare_desc(const void *key1, const void *key2);
 
 
@@ -1183,8 +1183,7 @@ find_next_mcelem(Datum *mcelem, int nmcelem, Datum value, int *index,
  *
  * XXX consider using SortSupport infrastructure
  */
-static int
-element_compare(const void *key1, const void *key2, void *arg)
+static QSORT_ARG_COMPARATOR_FUNC(element_compare, key1, key2)
 {
 	Datum		d1 = *((const Datum *) key1);
 	Datum		d2 = *((const Datum *) key2);

@@ -46,7 +46,21 @@
 
 #include "c.h"
 
-#ifndef __CHERI_PURE_CAPABILITY__
+#ifdef __FreeBSD__
+/*
+ * XXXAR: the postgres version of qsort does not work with capabilities (swap
+ * is broken) so we have to make sure to use the libc version
+ */
+void
+pg_qsort(void *a, size_t n, size_t es, int (*cmp) (const void *, const void *))
+{
+	/* postgres #defines qsort to pg_qsort... */
+#undef qsort
+	qsort(a, n, es, cmp);
+}
+
+#else
+#warning "using postgres custom qsort function"
 
 static char *med3(char *a, char *b, char *c,
 	 int (*cmp) (const void *, const void *));
@@ -224,13 +238,6 @@ loop:SWAPINIT(a, es);
 			goto loop;
 		}
 	}
-}
-#else /* __CHERI_PURE_CAPABILITY__ */
-void
-pg_qsort(void *a, size_t n, size_t es, int (*cmp) (const void *, const void *))
-{
-#undef qsort
-	qsort(a, n, es, cmp);
 }
 #endif
 

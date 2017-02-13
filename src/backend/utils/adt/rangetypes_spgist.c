@@ -52,8 +52,7 @@ Datum		spg_range_quad_leaf_consistent(PG_FUNCTION_ARGS);
 
 static int16 getQuadrant(TypeCacheEntry *typcache, RangeType *centroid,
 			RangeType *tst);
-static int	bound_cmp(const void *a, const void *b, void *arg);
-
+static QSORT_ARG_COMPARATOR_FUNC(bound_cmp, a, b);
 static int adjacent_inner_consistent(TypeCacheEntry *typcache,
 						  RangeBound *arg, RangeBound *centroid,
 						  RangeBound *prev);
@@ -189,8 +188,7 @@ spg_range_quad_choose(PG_FUNCTION_ARGS)
 /*
  * Bound comparison for sorting.
  */
-static int
-bound_cmp(const void *a, const void *b, void *arg)
+static QSORT_ARG_COMPARATOR_FUNC(bound_cmp, a, b)
 {
 	RangeBound *ba = (RangeBound *) a;
 	RangeBound *bb = (RangeBound *) b;

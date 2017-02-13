@@ -131,8 +131,7 @@ find_wordentry(TSVector t, TSQuery q, QueryOperand *item, int32 *nitem)
 /*
  * sort QueryOperands by (length, word)
  */
-static int
-compareQueryOperand(const void *a, const void *b, void *arg)
+static QSORT_ARG_COMPARATOR_FUNC(compareQueryOperand, a, b)
 {
 	char	   *operand = (char *) arg;
 	QueryOperand *qa = (*(QueryOperand *const *) a);

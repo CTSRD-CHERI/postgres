@@ -159,9 +159,9 @@ static void range_gist_consider_split(ConsiderSplitContext *context,
 						  RangeBound *right_lower, int min_left_count,
 						  RangeBound *left_upper, int max_left_count);
 static int	get_gist_range_class(RangeType *range);
-static int	single_bound_cmp(const void *a, const void *b, void *arg);
-static int	interval_cmp_lower(const void *a, const void *b, void *arg);
-static int	interval_cmp_upper(const void *a, const void *b, void *arg);
+static QSORT_ARG_COMPARATOR_FUNC(single_bound_cmp, a, b);
+static QSORT_ARG_COMPARATOR_FUNC(interval_cmp_lower, a, b);
+static QSORT_ARG_COMPARATOR_FUNC(interval_cmp_upper, a, b);
 static int	common_entry_cmp(const void *i1, const void *i2);
 static float8 call_subtype_diff(TypeCacheEntry *typcache,
 				  Datum val1, Datum val2);
@@ -1478,8 +1478,7 @@ get_gist_range_class(RangeType *range)
 /*
  * Comparison function for range_gist_single_sorting_split.
  */
-static int
-single_bound_cmp(const void *a, const void *b, void *arg)
+static QSORT_ARG_COMPARATOR_FUNC(single_bound_cmp, a, b)
 {
 	SingleBoundSortItem *i1 = (SingleBoundSortItem *) a;
 	SingleBoundSortItem *i2 = (SingleBoundSortItem *) b;
@@ -1491,8 +1490,7 @@ single_bound_cmp(const void *a, const void *b, void *arg)
 /*
  * Compare NonEmptyRanges by lower bound.
  */
-static int
-interval_cmp_lower(const void *a, const void *b, void *arg)
+static QSORT_ARG_COMPARATOR_FUNC(interval_cmp_lower, a, b)
 {
 	NonEmptyRange *i1 = (NonEmptyRange *) a;
 	NonEmptyRange *i2 = (NonEmptyRange *) b;
@@ -1504,8 +1502,7 @@ interval_cmp_lower(const void *a, const void *b, void *arg)
 /*
  * Compare NonEmptyRanges by upper bound.
  */
-static int
-interval_cmp_upper(const void *a, const void *b, void *arg)
+static QSORT_ARG_COMPARATOR_FUNC(interval_cmp_upper, a, b)
 {
 	NonEmptyRange *i1 = (NonEmptyRange *) a;
 	NonEmptyRange *i2 = (NonEmptyRange *) b;

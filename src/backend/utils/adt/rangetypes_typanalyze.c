@@ -31,7 +31,7 @@
 #include "utils/rangetypes.h"
 
 static int	float8_qsort_cmp(const void *a1, const void *a2);
-static int	range_bound_qsort_cmp(const void *a1, const void *a2, void *arg);
+static QSORT_ARG_COMPARATOR_FUNC(range_bound_qsort_cmp, a1, a2);
 static void compute_range_stats(VacAttrStats *stats,
 		   AnalyzeAttrFetchFunc fetchfunc, int samplerows, double totalrows);
 
@@ -79,8 +79,7 @@ float8_qsort_cmp(const void *a1, const void *a2)
 /*
  * Comparison function for sorting RangeBounds.
  */
-static int
-range_bound_qsort_cmp(const void *a1, const void *a2, void *arg)
+static QSORT_ARG_COMPARATOR_FUNC(range_bound_qsort_cmp, a1, a2)
 {
 	RangeBound *b1 = (RangeBound *) a1;
 	RangeBound *b2 = (RangeBound *) a2;

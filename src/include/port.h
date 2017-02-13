@@ -436,14 +436,32 @@ extern int pqGethostbyname(const char *name,
 
 extern void pg_qsort(void *base, size_t nel, size_t elsize,
 		 int (*cmp) (const void *, const void *));
-extern int	pg_qsort_strcmp(const void *a, const void *b);
 
+/* Use ifdef FreeBSD and not __CHERI_PURE_CAPABILITY__ so that we use the same code path for MIPS and CHERI */
+#ifdef __FreeBSD__
+/* Postgres qsort_arg is broken for capabilities so we replace it with qsort_r but that uses a different parameter order for cmp */
+typedef int (*qsort_arg_comparator) (void *arg, const void *a, const void *b);
+/*
+ * XXXAR: the postgres version of qsort_arg does not work with capabilities (swap
+ * is broken) so we have to make sure to use the libc function qsort_r instead
+ */
+static inline void
+qsort_arg(void *a, size_t n, size_t es, qsort_arg_comparator cmp, void *arg)
+{
+	qsort_r(a, n, es, arg, cmp);
+}
+#define QSORT_ARG_COMPARATOR_FUNC(name, a, b) \
+	int name(void *arg, const void *a, const void *b)
+#else
+#warning "Using postgres qsort"
 #define qsort(a,b,c,d) pg_qsort(a,b,c,d)
-
 typedef int (*qsort_arg_comparator) (const void *a, const void *b, void *arg);
-
 extern void qsort_arg(void *base, size_t nel, size_t elsize,
 		  qsort_arg_comparator cmp, void *arg);
+#endif
+extern int	pg_qsort_strcmp(const void *a, const void *b);
+
+
 
 /* port/chklocale.c */
 extern int	pg_get_encoding_from_locale(const char *ctype, bool write_message);

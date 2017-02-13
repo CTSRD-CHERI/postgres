@@ -77,8 +77,7 @@ uniquePos(WordEntryPos *a, int l)
 }
 
 /* Compare two WordEntryIN values for qsort */
-static int
-compareentry(const void *va, const void *vb, void *arg)
+static QSORT_ARG_COMPARATOR_FUNC(compareentry, va, vb)
 {
 	const WordEntryIN *a = (const WordEntryIN *) va;
 	const WordEntryIN *b = (const WordEntryIN *) vb;
