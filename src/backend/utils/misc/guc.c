@@ -4282,6 +4282,12 @@ find_option(const char *name, bool create_placeholders, int elevel)
 	 * By equating const char ** with struct config_generic *, we are assuming
 	 * the name field is first in config_generic.
 	 */
+	/*
+	 * XXXAR: I think this should work but seems very fragile to me. Why not:
+	 *
+	 *     struct config_generic tmp = { .name = name };
+	 *     const struct config_generic *key = &tmp;
+	 */
 	res = (struct config_generic **) bsearch((void *) &key,
 											 (void *) guc_variables,
 											 num_guc_variables,
