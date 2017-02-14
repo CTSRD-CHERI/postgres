@@ -22,7 +22,8 @@ parser.add_argument("--install-root", help="root directory for postgres install 
 parser.add_argument("--reconfigure", action="store_true")
 parser.add_argument("--build_jobs", "-j", type=int, default=min(16, os.cpu_count()), help="number of make jobs")
 target = parser.add_mutually_exclusive_group()
-target.add_argument("--build-target", dest="build_target", choices=["mips", "cheri128", "cheri256"], default="cheri256")
+possible_targets = ["mips", "cheri128", "cheri256"]
+target.add_argument("--build-target", dest="build_target", choices=possible_targets, default="cheri256")
 target.add_argument("--cheri-256", "--256", dest="build_target", action="store_const", const="cheri256")
 target.add_argument("--cheri-128", "--128", dest="build_target", action="store_const", const="cheri128")
 target.add_argument("--mips", dest="build_target", action="store_const", const="mips")
@@ -38,7 +39,8 @@ elif args.build_target == "cheri128":
     cheri_sdk = cheri_root / "output/sdk128"
 elif args.build_target == "mips":
     target_flags = ["-target", "mips64-unknown-freebsd", "-mabi=n64"]
-    sys.exit("Building for MIPS not implemented yet")
+    # use the MIPS binaries from 256 bit sysroot
+    cheri_sdk = cheri_root / "output/sdk256"
 else:
     sys.exit("logic error")
 cheri_sysroot = cheri_sdk / "sysroot"
@@ -48,7 +50,7 @@ common_flags = [
     "-msoft-float",
     "-mxgot",
     "-static",
-    # "-DUSE_ASSERT_CHECKING",
+    "-DUSE_ASSERT_CHECKING",
     "-G0",
     "-integrated-as",
     optlevel
@@ -111,4 +113,7 @@ def do_objdump(executable: Path):
 # do_objdump(src_root / "src/bin/initdb/initdb")
 # do_objdump(src_root / "src/test/regress/pg_regress")
 # do_objdump(src_root / "src/backend/postgres")
+for i in possible_targets:
+    check_call(["cp", "-fv", str(src_root / "run-initdb-cheri.sh"),
+                args.install_root + "/postgres/" + i + "/run-initdb.sh"])
 print("Done.")
