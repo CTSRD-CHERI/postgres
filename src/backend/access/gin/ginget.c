@@ -431,8 +431,7 @@ restartScanEntry:
  * Comparison function for scan entry indexes. Sorts by predictNumberResult,
  * least frequent items first.
  */
-static int
-entryIndexByFrequencyCmp(const void *a1, const void *a2, void *arg)
+static QSORT_ARG_COMPARATOR_FUNC(entryIndexByFrequencyCmp, a1, a2)
 {
 	const GinScanKey key = (const GinScanKey) arg;
 	int			i1 = *(const int *) a1;
