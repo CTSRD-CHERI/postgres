@@ -34,11 +34,14 @@ cheri_root = Path(args.cheri_root)
 if args.build_target == "cheri256":
     cheri_sdk = cheri_root / "output/sdk256"
     target_flags = ["-target", "cheri-unknown-freebsd", "-mabi=sandbox"]
+    target_ld_flags = ["-Wl,-melf64btsmip_cheri_fbsd"]
 elif args.build_target == "cheri128":
-    target_flags = ["-target", "cheri-unknown-freebsd", "-mabi=sandbox", "-mllvm", "-cheri128"]
     cheri_sdk = cheri_root / "output/sdk128"
+    target_flags = ["-target", "cheri-unknown-freebsd", "-mabi=sandbox", "-mllvm", "-cheri128"]
+    target_ld_flags = ["-Wl,-melf64btsmip_cheri_fbsd"]
 elif args.build_target == "mips":
     target_flags = ["-target", "mips64-unknown-freebsd", "-mabi=n64"]
+    target_ld_flags = ["-Wl,-melf64btsmip_fbsd"]
     # use the MIPS binaries from 256 bit sysroot
     cheri_sdk = cheri_root / "output/sdk256"
 else:
@@ -68,7 +71,7 @@ compile_flags = compiler_path_flags + common_flags + warning_flags + target_flag
 # LDFLAGS_EX  extra linker flags for linking executables only
 # LDFLAGS_SL  extra linker flags for linking shared libraries only
 # TODO: try building shared once linker works
-ld_flags = ["-pthread", "-Wl,-melf64btsmip_cheri_fbsd", "-static"]
+ld_flags = ["-pthread", "-static"] + target_ld_flags
 os.environ["CC"] = str(cheri_sdk / "bin/clang")
 os.environ["CXX"] = str(cheri_sdk / "bin/clang++")
 os.environ["PATH"] = "%s:%s" % (cheri_sdk / "bin", os.environ["PATH"])
@@ -90,10 +93,11 @@ configure_env.update({
 src_root = Path(__file__).parent  # type: Path
 os.chdir(str(src_root))
 # check_call(["env"], env=configure_env)
+install_prefix = "/postgres/" + args.build_target
 if args.reconfigure or not (src_root / "GNUmakefile").exists():
     check_call(["sh", "./configure",
                 "--host=cheri-unknown-freebsd", "--target=cheri-unknown-freebsd", "--build=x86_64-unknown-freebsd",
-                "--prefix=/postgres/" + args.build_target,
+                "--prefix=" + install_prefix,
                 "--enable-debug",
                 "--without-libxml", "--without-readline", "--without-gssapi",
                 ], env=configure_env)
@@ -110,10 +114,10 @@ def do_objdump(executable: Path):
         check_call(cmd, stdout=output)
 
 
-# do_objdump(src_root / "src/bin/initdb/initdb")
-# do_objdump(src_root / "src/test/regress/pg_regress")
-# do_objdump(src_root / "src/backend/postgres")
-for i in possible_targets:
-    check_call(["cp", "-fv", str(src_root / "run-initdb-cheri.sh"),
-                args.install_root + "/postgres/" + i + "/run-initdb.sh"])
+do_objdump(src_root / "src/bin/initdb/initdb")
+do_objdump(src_root / "src/bin/initdb/initdb.o")
+do_objdump(src_root / "src/test/regress/pg_regress")
+do_objdump(src_root / "src/backend/postgres")
+# for i in possible_targets:
+check_call(["cp", "-fv", str(src_root / "run-initdb-cheri.sh"), args.install_root + install_prefix + "/run-initdb.sh"])
 print("Done.")
