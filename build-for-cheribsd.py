@@ -108,8 +108,10 @@ check_call(["gmake", "-C", "src/test/regress", "install-tests", "DESTDIR=" + arg
 
 
 def do_objdump(executable: Path):
-    cmd = [str(cheri_sdk / "bin/objdump"), "-rlSd", str(executable)]
-    print("Creating dump of", executable)
+    # cmd = [str(cheri_sdk / "bin/objdump"), "-rlSd", str(executable)]
+    cmd = [str(cheri_sdk / "bin/llvm-objdump"), "-triple=cheri-unknown-freebsd", "-d", "-t", "-s", "-print-imm-hex",
+           str(executable)]
+    print("Creating dump of", executable, ":", " ".join(cmd))
     with (src_root / (executable.name + ".dump")).open("w+") as output:
         check_call(cmd, stdout=output)
 
