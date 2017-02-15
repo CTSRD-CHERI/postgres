@@ -21,6 +21,9 @@ parser.add_argument("--cheri-root", default=os.path.expanduser("~/cheri"))
 parser.add_argument("--install-root", help="root directory for postgres install (will be installed to a target-specific subdir)", default=os.path.expanduser("~/cheri/output/postgres-install"))
 parser.add_argument("--reconfigure", action="store_true")
 parser.add_argument("--build_jobs", "-j", type=int, default=min(16, os.cpu_count()), help="number of make jobs")
+parser.add_argument("--use-lld", "--lld", action="store_true")
+parser.add_argument("--debug", action="store_true")
+parser.add_argument("--clean", action="store_true")
 target = parser.add_mutually_exclusive_group()
 possible_targets = ["mips", "cheri128", "cheri256"]
 target.add_argument("--build-target", dest="build_target", choices=possible_targets, default="cheri256")
@@ -66,12 +69,16 @@ warning_flags = [
     "-Werror=incompatible-pointer-types",
 ]
 readline_include_dir = str(cheri_sysroot / "usr/include/edit")
-compiler_path_flags = ["--sysroot=" + str(cheri_sysroot), "-B" + str(cheri_sdk), "-isystem ", readline_include_dir]
+compiler_path_flags = ["-isysroot", str(cheri_sysroot), "-B" + str(cheri_sdk), "-isystem ", readline_include_dir]
 compile_flags = compiler_path_flags + common_flags + warning_flags + target_flags
+if args.debug:
+    compile_flags.append("-g")
 # LDFLAGS_EX  extra linker flags for linking executables only
 # LDFLAGS_SL  extra linker flags for linking shared libraries only
 # TODO: try building shared once linker works
 ld_flags = ["-pthread", "-static"] + target_ld_flags
+if args.use_lld:
+    ld_flags += ["-fuse-ld=lld", "-Wl,-fatal-warnings", "-Wl,-color-diagnostics=always"]
 os.environ["CC"] = str(cheri_sdk / "bin/clang")
 os.environ["CXX"] = str(cheri_sdk / "bin/clang++")
 os.environ["PATH"] = "%s:%s" % (cheri_sdk / "bin", os.environ["PATH"])
@@ -94,6 +101,8 @@ src_root = Path(__file__).parent  # type: Path
 os.chdir(str(src_root))
 # check_call(["env"], env=configure_env)
 install_prefix = "/postgres/" + args.build_target
+if args.clean and (src_root / "GNUmakefile").exists():
+    check_call(["gmake", "distclean"])
 if args.reconfigure or not (src_root / "GNUmakefile").exists():
     check_call(["sh", "./configure",
                 "--host=cheri-unknown-freebsd", "--target=cheri-unknown-freebsd", "--build=x86_64-unknown-freebsd",
