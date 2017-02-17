@@ -89,6 +89,7 @@ os.environ["PATH"] = "%s:%s" % (cheri_sdk / "bin", os.environ["PATH"])
 configure_env = os.environ.copy()
 configure_env.update({
     "PRINTF_SIZE_T_SUPPORT": "yes",
+    "USE_NAMED_POSIX_SEMAPHORES": "1",
     "CFLAGS": " ".join(compile_flags),
     "CXXFLAGS": " ".join(compile_flags),
     "CPPFLAGS": " ".join(compiler_path_flags),
