@@ -297,7 +297,6 @@ void		initialize_data_directory(void);
 
 #define PG_CMD_OPEN \
 do { \
-	fprintf(stderr, "About to run %s\n", cmd); \
 	cmdfd = popen_check(cmd, "w"); \
 	if (cmdfd == NULL) \
 		exit_nicely(); /* message already printed by popen_check */ \
@@ -311,28 +310,24 @@ do { \
 
 #define PG_CMD_PUTS(line) \
 do { \
-	/*fprintf(stderr, "MSG: %s\n", line);*/ \
 	if (fputs(line, cmdfd) < 0 || fflush(cmdfd) < 0) \
 		output_failed = true, output_errno = errno; \
 } while (0)
 
 #define PG_CMD_PRINTF1(fmt, arg1) \
 do { \
-	/*fprintf(stderr, "MSG: " fmt, arg1);*/ \
 	if (fprintf(cmdfd, fmt, arg1) < 0 || fflush(cmdfd) < 0) \
 		output_failed = true, output_errno = errno; \
 } while (0)
 
 #define PG_CMD_PRINTF2(fmt, arg1, arg2) \
 do { \
-	/*fprintf(stderr, "MSG: " fmt, arg1, arg2);*/ \
 	if (fprintf(cmdfd, fmt, arg1, arg2) < 0 || fflush(cmdfd) < 0) \
 		output_failed = true, output_errno = errno; \
 } while (0)
 
 #define PG_CMD_PRINTF3(fmt, arg1, arg2, arg3)		\
 do { \
-	/*fprintf(stderr, "MSG: " fmt, arg1, arg2, arg3);*/ \
 	if (fprintf(cmdfd, fmt, arg1, arg2, arg3) < 0 || fflush(cmdfd) < 0) \
 		output_failed = true, output_errno = errno; \
 } while (0)
@@ -1481,7 +1476,6 @@ bootstrap_template1(void)
 		talkargs = "-d 5";
 
 	bki_lines = readfile(bki_file);
-	printf("Running commands from %s\n", bki_file);
 
 	/* Check that bki file appears to be of the right version */
 
@@ -3294,14 +3288,12 @@ initialize_data_directory(void)
 	/* Now create all the text config files */
 	setup_config();
 
-	printf("Running bootstrap_template1()\n");
 	/* Bootstrap template1 */
 	bootstrap_template1();
 
 	/*
 	 * Make the per-database PG_VERSION for template1 only after init'ing it
 	 */
-	printf("Running write_version_file()\n");
 	write_version_file("base/1");
 
 	/*

@@ -201,7 +201,6 @@ InternalIpcMemoryCreate(IpcMemoryKey memKey, Size size)
 						 "memory configuration.") : 0));
 	}
 
-	printf("registering shm_exit_routine IpcMemoryDelete for shmid %d\n", shmid);
 	/* Register on-exit routine to delete the new segment */
 	on_shmem_exit(IpcMemoryDelete, Int32GetDatum(shmid));
 
@@ -213,7 +212,6 @@ InternalIpcMemoryCreate(IpcMemoryKey memKey, Size size)
 		elog(FATAL, "shmat(id=%d, %#p, %x) failed: %m", shmid, NULL, PG_SHMAT_FLAGS);
 
 	/* Register on-exit routine to detach new segment before deleting */
-	printf("registering shm_exit_routine IpcMemoryDetach for addr %p\n", memAddress);
 	on_shmem_exit(IpcMemoryDetach, PointerGetDatum(memAddress));
 
 	/*
@@ -240,7 +238,6 @@ InternalIpcMemoryCreate(IpcMemoryKey memKey, Size size)
 static void
 IpcMemoryDetach(int status, Datum shmaddr)
 {
-	printf("IpcMemoryDetach %#p\n", DatumGetPointer(shmaddr));
 	/* Detach System V shared memory block. */
 	if (shmdt(DatumGetPointer(shmaddr)) < 0)
 		elog(LOG, "shmdt(%#p) failed: %m", DatumGetPointer(shmaddr));
@@ -253,7 +250,6 @@ IpcMemoryDetach(int status, Datum shmaddr)
 static void
 IpcMemoryDelete(int status, Datum shmId)
 {
-	printf("IpcMemoryDelete %d\n", DatumGetInt32(shmId));
 	if (shmctl(DatumGetInt32(shmId), IPC_RMID, NULL) < 0)
 		elog(LOG, "shmctl(%d, %d, 0) failed: %m",
 			 DatumGetInt32(shmId), IPC_RMID);

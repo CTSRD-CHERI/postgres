@@ -257,14 +257,9 @@ shmem_exit(int code)
 	 */
 	elog(DEBUG3, "shmem_exit(%d): %d on_shmem_exit callbacks to make",
 		 code, on_shmem_exit_index);
-	while (--on_shmem_exit_index >= 0) {
-		printf("Calling on_shmem_exit_list[%d] = %p(%ju (%#p))\n", on_shmem_exit_index,
-			on_shmem_exit_list[on_shmem_exit_index].function,
-			(uintmax_t)on_shmem_exit_list[on_shmem_exit_index].arg,
-			(void*)on_shmem_exit_list[on_shmem_exit_index].arg);
+	while (--on_shmem_exit_index >= 0)
 		(*on_shmem_exit_list[on_shmem_exit_index].function) (code,
 								on_shmem_exit_list[on_shmem_exit_index].arg);
-	}
 	on_shmem_exit_index = 0;
 }
 
@@ -359,11 +354,6 @@ on_shmem_exit(pg_on_exit_callback function, Datum arg)
 
 	on_shmem_exit_list[on_shmem_exit_index].function = function;
 	on_shmem_exit_list[on_shmem_exit_index].arg = arg;
-	printf("Registering shm callback %d, %p for %ju\n", on_shmem_exit_index, (void*)function, (uintmax_t)arg);
-	printf("on_shmem_exit_list[%d] = %p(%ju (%#p))\n", on_shmem_exit_index,
-		on_shmem_exit_list[on_shmem_exit_index].function,
-		(uintmax_t)on_shmem_exit_list[on_shmem_exit_index].arg,
-		(void*)on_shmem_exit_list[on_shmem_exit_index].arg);
 
 	++on_shmem_exit_index;
 
