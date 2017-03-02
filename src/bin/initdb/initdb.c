@@ -1085,6 +1085,9 @@ choose_dsm_implementation(void)
 #endif
 }
 
+#include <sys/signal.h>
+#include <sys/wait.h>
+
 /*
  * Determine platform-specific config settings
  *
@@ -1137,8 +1140,13 @@ test_config_settings(void)
 				 backend_exec, boot_options,
 				 test_conns, test_buffs,
 				 DEVNULL, DEVNULL);
+		fprintf(stderr, "Running %s\n", cmd);
 		status = system(cmd);
-		if (status == 0)
+		if (WIFSIGNALED(status))
+		{
+			fprintf(stderr, "Command %s crashed -> aborting\n", cmd);
+			exit(1);
+		} else if (WIFEXITED(status) && WEXITSTATUS(status) == 0)
 		{
 			ok_buffers = test_buffs;
 			break;
@@ -1172,8 +1180,13 @@ test_config_settings(void)
 				 backend_exec, boot_options,
 				 n_connections, test_buffs,
 				 DEVNULL, DEVNULL);
+		fprintf(stderr, "Running %s\n", cmd);
 		status = system(cmd);
-		if (status == 0)
+		if (WIFSIGNALED(status))
+		{
+			fprintf(stderr, "Command %s crashed -> aborting\n", cmd);
+			exit(1);
+		} else if (WIFEXITED(status) && WEXITSTATUS(status) == 0)
 			break;
 	}
 	n_buffers = test_buffs;
