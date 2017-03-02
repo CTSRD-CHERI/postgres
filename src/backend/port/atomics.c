@@ -26,6 +26,7 @@
 #endif
 
 #ifdef PG_HAVE_MEMORY_BARRIER_EMULATION
+#error "Should not been needed"
 void
 pg_spinlock_barrier(void)
 {
@@ -42,6 +43,7 @@ pg_spinlock_barrier(void)
 #endif
 
 #ifdef PG_HAVE_COMPILER_BARRIER_EMULATION
+#error "Should not been needed"
 void
 pg_extern_compiler_barrier(void)
 {
@@ -51,6 +53,7 @@ pg_extern_compiler_barrier(void)
 
 
 #ifdef PG_HAVE_ATOMIC_FLAG_SIMULATION
+#error "Should not been needed"
 
 void
 pg_atomic_init_flag_impl(volatile pg_atomic_flag *ptr)
@@ -86,6 +89,7 @@ pg_atomic_clear_flag_impl(volatile pg_atomic_flag *ptr)
 #endif   /* PG_HAVE_ATOMIC_FLAG_SIMULATION */
 
 #ifdef PG_HAVE_ATOMIC_U32_SIMULATION
+#error "Should not been needed"
 void
 pg_atomic_init_u32_impl(volatile pg_atomic_uint32 *ptr, uint32 val_)
 {
