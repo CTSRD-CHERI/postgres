@@ -4272,7 +4272,7 @@ add_placeholder_variable(const char *name, int elevel)
 static struct config_generic *
 find_option(const char *name, bool create_placeholders, int elevel)
 {
-	const char **key = &name;
+	// const char **key = &name;
 	struct config_generic **res;
 	int			i;
 
@@ -4288,6 +4288,8 @@ find_option(const char *name, bool create_placeholders, int elevel)
 	 *     struct config_generic tmp = { .name = name };
 	 *     const struct config_generic *key = &tmp;
 	 */
+	struct config_generic tmp = { .name = name };
+	const struct config_generic *key = &tmp;
 	res = (struct config_generic **) bsearch((void *) &key,
 											 (void *) guc_variables,
 											 num_guc_variables,
@@ -7453,14 +7455,14 @@ static void
 define_custom_variable(struct config_generic * variable)
 {
 	const char *name = variable->name;
-	const char **nameAddr = &name;
 	struct config_string *pHolder;
 	struct config_generic **res;
+	struct config_generic *tmp = variable;
 
 	/*
 	 * See if there's a placeholder by the same name.
 	 */
-	res = (struct config_generic **) bsearch((void *) &nameAddr,
+	res = (struct config_generic **) bsearch((void *) &tmp,
 											 (void *) guc_variables,
 											 num_guc_variables,
 											 sizeof(struct config_generic *),
