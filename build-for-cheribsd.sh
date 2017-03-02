@@ -37,7 +37,9 @@ function do_objdump() {
 do_objdump ./src/bin/initdb initdb
 #do_objdump ./src/backend postgres
 
-
-cp -fv run-postgres-tests-cheri.sh "${INSTALL_DIR}/postgres/run-postgres-tests-cheri.sh"
-cp -fv run-initdb-cheri.sh "${INSTALL_DIR}/postgres/run-initdb-cheri.sh"
+cp run-postgres-tests-cheri.sh "${INSTALL_DIR}/postgres/run-postgres-tests-cheri.sh"
+cp run-initdb-cheri.sh "${INSTALL_DIR}/postgres/run-initdb-cheri.sh"
+cp postgres-benchmark.sh "${INSTALL_DIR}/postgres-benchmark.sh"
+chmod 755 "${INSTALL_DIR}/postgres-benchmark.sh"
+chmod -R a+rX "${INSTALL_DIR}"
 
