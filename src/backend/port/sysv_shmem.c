@@ -104,7 +104,6 @@ InternalIpcMemoryCreate(IpcMemoryKey memKey, Size size)
 	IpcMemoryId shmid;
 	void	   *memAddress;
 
-	printf("Calling shmget(%ld, %zu, IPC_CREAT | IPC_EXCL | IPCProtection (0x%x))\n", memKey, size, IPC_CREAT | IPC_EXCL | IPCProtection);
 	shmid = shmget(memKey, size, IPC_CREAT | IPC_EXCL | IPCProtection);
 
 	if (shmid < 0)
@@ -135,7 +134,6 @@ InternalIpcMemoryCreate(IpcMemoryKey memKey, Size size)
 		 */
 		if (shmget_errno == EINVAL)
 		{
-			printf("Calling shmget(%ld, %d, IPC_CREAT | IPC_EXCL | IPCProtection (0x%x))\n", memKey, 0, IPC_CREAT | IPC_EXCL | IPCProtection);
 			shmid = shmget(memKey, 0, IPC_CREAT | IPC_EXCL | IPCProtection);
 
 			if (shmid < 0)
@@ -206,10 +204,9 @@ InternalIpcMemoryCreate(IpcMemoryKey memKey, Size size)
 
 	/* OK, should be able to attach to the segment */
 	memAddress = shmat(shmid, NULL, PG_SHMAT_FLAGS);
-	printf("shmat(id=%d, %#p, %x) = %#p", shmid, NULL, PG_SHMAT_FLAGS, memAddress);
 
 	if (memAddress == (void *) -1)
-		elog(FATAL, "shmat(id=%d, %#p, %x) failed: %m", shmid, NULL, PG_SHMAT_FLAGS);
+		elog(FATAL, "shmat(id=%d) failed: %m", shmid);
 
 	/* Register on-exit routine to detach new segment before deleting */
 	on_shmem_exit(IpcMemoryDetach, PointerGetDatum(memAddress));
@@ -240,7 +237,7 @@ IpcMemoryDetach(int status, Datum shmaddr)
 {
 	/* Detach System V shared memory block. */
 	if (shmdt(DatumGetPointer(shmaddr)) < 0)
-		elog(LOG, "shmdt(%#p) failed: %m", DatumGetPointer(shmaddr));
+		elog(LOG, "shmdt(%p) failed: %m", DatumGetPointer(shmaddr));
 }
 
 /****************************************************************************/
@@ -509,7 +506,7 @@ AnonymousShmemDetach(int status, Datum arg)
 	if (AnonymousShmem != NULL)
 	{
 		if (munmap(AnonymousShmem, AnonymousShmemSize) < 0)
-			elog(LOG, "munmap(%#p, %zu) failed: %m",
+			elog(LOG, "munmap(%p, %zu) failed: %m",
 				 AnonymousShmem, AnonymousShmemSize);
 		AnonymousShmem = NULL;
 	}
@@ -580,7 +577,6 @@ PGSharedMemoryCreate(Size size, bool makePrivate, int port,
 	{
 		/* Try to create new segment */
 		memAddress = InternalIpcMemoryCreate(NextShmemSegID, sysvsize);
-		printf("memAddress for id %ld = %#p\n", NextShmemSegID, memAddress);
 		if (memAddress)
 			break;				/* successful create and attach */
 
@@ -623,7 +619,6 @@ PGSharedMemoryCreate(Size size, bool makePrivate, int port,
 		 * Now try again to create the segment.
 		 */
 		memAddress = InternalIpcMemoryCreate(NextShmemSegID, sysvsize);
-		printf("memAddress on retry for id %ld = %#p", NextShmemSegID, memAddress);
 		if (memAddress)
 			break;				/* successful create and attach */
 
@@ -710,13 +705,13 @@ PGSharedMemoryReAttach(void)
 	UsedShmemSegAddr = origUsedShmemSegAddr;
 #endif
 
-	elog(DEBUG3, "attaching to %#p", UsedShmemSegAddr);
+	elog(DEBUG3, "attaching to %p", UsedShmemSegAddr);
 	hdr = (void *) PGSharedMemoryAttach((IpcMemoryKey) UsedShmemSegID, &shmid);
 	if (hdr == NULL)
-		elog(FATAL, "could not reattach to shared memory (key=%d, addr=%#p): %m",
+		elog(FATAL, "could not reattach to shared memory (key=%d, addr=%p): %m",
 			 (int) UsedShmemSegID, UsedShmemSegAddr);
 	if (hdr != origUsedShmemSegAddr)
-		elog(FATAL, "reattaching to shared memory returned unexpected address (got %#p, expected %#p)",
+		elog(FATAL, "reattaching to shared memory returned unexpected address (got %p, expected %p)",
 			 hdr, origUsedShmemSegAddr);
 	dsm_set_control_handle(((PGShmemHeader *) hdr)->dsm_control);
 
@@ -780,7 +775,7 @@ PGSharedMemoryDetach(void)
 			&& shmdt(NULL) < 0
 #endif
 			)
-			elog(LOG, "shmdt(%#p) failed: %m", UsedShmemSegAddr);
+			elog(LOG, "shmdt(%p) failed: %m", UsedShmemSegAddr);
 		UsedShmemSegAddr = NULL;
 	}
 
@@ -788,7 +783,7 @@ PGSharedMemoryDetach(void)
 	if (AnonymousShmem != NULL)
 	{
 		if (munmap(AnonymousShmem, AnonymousShmemSize) < 0)
-			elog(LOG, "munmap(%#p, %zu) failed: %m",
+			elog(LOG, "munmap(%p, %zu) failed: %m",
 				 AnonymousShmem, AnonymousShmemSize);
 		AnonymousShmem = NULL;
 	}
@@ -809,7 +804,6 @@ PGSharedMemoryAttach(IpcMemoryKey key, IpcMemoryId *shmid)
 	if ((*shmid = shmget(key, sizeof(PGShmemHeader), 0)) < 0)
 		return NULL;
 
-	printf("Calling shmat(%d, %#p, %x)\n", *shmid, UsedShmemSegAddr, PG_SHMAT_FLAGS);
 	hdr = (PGShmemHeader *) shmat(*shmid, UsedShmemSegAddr, PG_SHMAT_FLAGS);
 
 	if (hdr == (PGShmemHeader *) -1)
