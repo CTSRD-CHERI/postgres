@@ -4,6 +4,7 @@ POSTGRES_ROOT="/postgres/cheri"
 POSTGRES_DATA="/home/postgres/postgres-test-cheri/instance/data"
 POSTGRES="${POSTGRES_ROOT}/bin/postgres"
 INITDB="${POSTGRES_ROOT}/bin/initdb"
+PGCTL="${POSTGRES_ROOT}/bin/pg_ctl"
 PGBENCH="${POSTGRES_ROOT}/bin/pgbench"
 
 if test "`whoami`" = "root"; then
@@ -27,9 +28,10 @@ else
 fi
 
 echo "${0}: starting postgres..."
-${POSTGRES} -D "${POSTGRES_DATA}" &
-sleep 30
+${PGCTL} start -w -D "${POSTGRES_DATA}"
 echo "${0}: running benchmark..."
 ${PGBENCH} -i postgres
 ${PGBENCH} -c 2 -T 180 postgres 2>&1 | tee /tmp/pgbench-results.txt
+echo "${0}: stopping postgres..."
+${PGCTL} stop -D "${POSTGRES_DATA}"
 echo "${0}: done"
