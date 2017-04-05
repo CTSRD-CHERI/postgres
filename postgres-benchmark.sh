@@ -6,6 +6,7 @@ POSTGRES="${POSTGRES_ROOT}/bin/postgres"
 INITDB="${POSTGRES_ROOT}/bin/initdb"
 PGCTL="${POSTGRES_ROOT}/bin/pg_ctl"
 PGBENCH="${POSTGRES_ROOT}/bin/pgbench"
+NTIMES=10
 
 if test "`whoami`" = "root"; then
 	if ! pw user show postgres -q > /dev/null; then
@@ -29,9 +30,11 @@ fi
 
 echo "${0}: starting postgres..."
 ${PGCTL} start -w -D "${POSTGRES_DATA}"
-echo "${0}: running benchmark..."
+echo "${0}: running benchmark ${NTIMES} times..."
 ${PGBENCH} -i postgres
-${PGBENCH} -c 2 -T 180 postgres 2>&1 | tee /tmp/pgbench-results.txt
+for i in `jot ${NTIMES}`; do
+	${PGBENCH} -c 2 -T 180 postgres 2>&1 | tee /tmp/pgbench-results.txt
+done
 echo "${0}: stopping postgres..."
 ${PGCTL} stop -D "${POSTGRES_DATA}"
 echo "${0}: done"
