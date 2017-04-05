@@ -579,9 +579,9 @@ tas(volatile slock_t *lock)
 #define HAS_TEST_AND_SET
 
 /* Use C11 atomics for now */
-#ifndef __CHERI_PURE_CAPABILITY__
 typedef unsigned int slock_t;
 
+#ifndef __CHERI__
 #define TAS(lock) tas(lock)
 
 static __inline__ int
@@ -626,15 +626,14 @@ do \
 	*((volatile slock_t *) (lock)) = 0; \
 } while (0)
 
-#else /* __CHERI_PURE_CAPABILITY__ */
-/* Use C11 atomics for CHERIABI */
-#include <stdatomic.h>
-typedef atomic_flag slock_t;
+#else /* __CHERI__ */
+#include <machine/atomic.h>
 /* TODO: use acquire/release semantics for minor perf improvement */
-#define TAS(lock) atomic_flag_test_and_set(lock)
-#define S_UNLOCK(lock) atomic_flag_clear(lock)
+/* machine/atomic.h returns zero on failure so we need to invert the result */
+#define TAS(lock) (!atomic_cmpset_32(lock, 0, 1))
+#define S_UNLOCK(lock) atomic_set_32(lock, 0)
 
-#endif /* __CHERI_PURE_CAPABILITY__ */
+#endif /* __CHERI__ */
 
 #endif /* __mips__ && !__sgi */
 
