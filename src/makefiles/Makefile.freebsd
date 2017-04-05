@@ -1,7 +1,6 @@
 AROPT = cr
 
 ifdef ELF_SYSTEM
-export_dynamic = -Wl,-export-dynamic
 rpath = -Wl,-R'$(rpathdir)'
 endif
 
