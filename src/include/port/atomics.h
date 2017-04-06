@@ -73,6 +73,8 @@
 #include "port/atomics/arch-ppc.h"
 #elif defined(__hppa) || defined(__hppa__)
 #include "port/atomics/arch-hppa.h"
+#elif defined(__FreeBSD__) && defined(__mips__)
+#include "port/atomics/arch-mips-freebsd.h"
 #endif
 
 /*
@@ -93,6 +95,7 @@
 #if defined(__IBMC__) || defined(__IBMCPP__)
 #include "port/atomics/generic-xlc.h"
 /* gcc or compatible, including clang and icc */
+/* XXXAR: atomic builtins are currently broken for CHERI/MIPS! */
 #elif defined(__GNUC__) || defined(__INTEL_COMPILER)
 #include "port/atomics/generic-gcc.h"
 #elif defined(WIN32_ONLY_COMPILER)
