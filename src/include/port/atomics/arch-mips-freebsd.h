@@ -66,20 +66,23 @@ static inline uint32_t
 atomic_fcmpset_32(__volatile uint32_t *p, uint32_t *cmpval, uint32_t newval)
 {
 	uint32_t ret;
+	uint32_t tmp;
 	uint32_t expected = *cmpval;
 
 	__asm __volatile (
 		"1:\n\t"
 		"cllw	%[ret], %[ptr]\n\t"		/* load old value */
 		"bne	%[ret], %[expected], 2f\n\t"	/* compare */
+		"move	%[tmp], %[ret]\n\t"		/* save loaded value */
 		"cscw	%[ret], %[newval], %[ptr]\n\t"	/* attempt to store */
 		"beqz	%[ret], 1b\n\t"			/* if it failed, spin */
 		"j	3f\n\t"
 		"2:\n\t"
-		"csw	%[ret], $0, 0(%[cmpval])\n\t"	/* save old value */
+		"csw	%[tmp], $0, 0(%[cmpval])\n\t"	/* store loaded value */
 		"li	%[ret], 0\n\t"
 		"3:\n"
-		: [ret] "=&r" (ret), [ptr]"=C" (p), [cmpval]"=C" (cmpval)
+		: [ret] "=&r" (ret), [tmp] "=&r" (tmp), [ptr]"=C" (p),
+		    [cmpval]"=C" (cmpval)
 		: [newval] "r" (newval), [expected] "r" (expected)
 		: "memory");
 	return ret;
@@ -88,21 +91,23 @@ atomic_fcmpset_32(__volatile uint32_t *p, uint32_t *cmpval, uint32_t newval)
 static inline uint64_t
 atomic_fcmpset_64(__volatile uint64_t *p, uint64_t *cmpval, uint64_t newval)
 {
-	uint64_t ret;
+	uint64_t tmp;
 	uint64_t expected = *cmpval;
 
 	__asm __volatile (
 		"1:\n\t"
 		"clld	%[ret], %[ptr]\n\t"		/* load old value */
 		"bne	%[ret], %[expected], 2f\n\t"	/* compare */
+		"move	%[tmp], %[ret]\n\t"		/* save loaded value */
 		"cscd	%[ret], %[newval], %[ptr]\n\t"	/* attempt to store */
 		"beqz	%[ret], 1b\n\t"			/* if it failed, spin */
 		"j	3f\n\t"
 		"2:\n\t"
-		"csd	%[ret], $0, 0(%[cmpval])\n\t"	/* save old value */
+		"csd	%[tmp], $0, 0(%[cmpval])\n\t"	/* store loaded value */
 		"li	%[ret], 0\n\t"
 		"3:\n"
-		: [ret] "=&r" (ret), [ptr]"=C" (p), [cmpval]"=C" (cmpval)
+		: [ret] "=&r" (ret), [tmp] "=&r" (tmp), [ptr]"=C" (p),
+		    [cmpval]"=C" (cmpval)
 		: [newval] "r" (newval), [expected] "r" (expected)
 		: "memory");
 	return ret;
