@@ -29,6 +29,7 @@
  */
 #define pg_compiler_barrier_impl()	__asm__ __volatile__("" ::: "memory")
 
+
 /*
  * If we're on GCC 4.1.0 or higher, we should be able to get a memory barrier
  * out of this compiler built-in.  But we prefer to rely on platform specific
@@ -52,6 +53,10 @@
 #		define pg_write_barrier_impl()		__atomic_thread_fence(__ATOMIC_RELEASE)
 #endif
 
+#ifdef __CHERI__
+#include <machine/atomic.h>
+#endif
+
 
 #ifdef HAVE_ATOMICS
 
@@ -67,7 +72,9 @@ typedef struct pg_atomic_flag
 	 * and/or more reliably implemented on most non-Intel platforms.  (Note
 	 * that this code isn't used on x86[_64]; see arch-x86.h for that.)
 	 */
-#ifdef HAVE_GCC__SYNC_INT32_TAS
+#ifdef __CHERI__
+	volatile unsigned int value;
+#elif defined(HAVE_GCC__SYNC_INT32_TAS)
 	volatile int value;
 #else
 	volatile char value;
@@ -113,7 +120,11 @@ pg_atomic_test_set_flag_impl(volatile pg_atomic_flag *ptr)
 {
 	/* NB: only an acquire barrier, not a full one */
 	/* some platform only support a 1 here */
+#ifdef __CHERI__
+	return (bool)atomic_cmpset_32(&ptr->value, 0, 1);
+#else
 	return __sync_lock_test_and_set(&ptr->value, 1) == 0;
+#endif
 }
 #endif
 
@@ -133,7 +144,11 @@ pg_atomic_unlocked_test_flag_impl(volatile pg_atomic_flag *ptr)
 static inline void
 pg_atomic_clear_flag_impl(volatile pg_atomic_flag *ptr)
 {
+#ifdef __CHERI__
+	atomic_set_32(&ptr->value, 0);
+#else
 	__sync_lock_release(&ptr->value);
+#endif
 }
 #endif
 
@@ -149,30 +164,42 @@ pg_atomic_init_flag_impl(volatile pg_atomic_flag *ptr)
 #endif /* defined(PG_HAVE_ATOMIC_FLAG_SUPPORT) */
 
 /* prefer __atomic, it has a better API */
-#if !defined(PG_HAVE_ATOMIC_COMPARE_EXCHANGE_U32) && defined(HAVE_GCC__ATOMIC_INT32_CAS)
+#if !defined(PG_HAVE_ATOMIC_COMPARE_EXCHANGE_U32) && defined(HAVE_GCC__ATOMIC_INT32_CAS) && !defined(__CHERI__)
 #define PG_HAVE_ATOMIC_COMPARE_EXCHANGE_U32
 static inline bool
 pg_atomic_compare_exchange_u32_impl(volatile pg_atomic_uint32 *ptr,
 									uint32 *expected, uint32 newval)
 {
+#ifdef __CHERI__
+	// XXXAR: this won't work as there is no version that returns the old value
+	// return (bool)atomic_cmpset_32(&ptr->value, expected, newval);
+#error "Not implemented"
+#else
 	/* FIXME: we can probably use a lower consistency model */
 	return __atomic_compare_exchange_n(&ptr->value, expected, newval, false,
 									   __ATOMIC_SEQ_CST, __ATOMIC_SEQ_CST);
+#endif
 }
 #endif
 
-#if !defined(PG_HAVE_ATOMIC_COMPARE_EXCHANGE_U32) && defined(HAVE_GCC__SYNC_INT32_CAS)
+#if !defined(PG_HAVE_ATOMIC_COMPARE_EXCHANGE_U32) && defined(HAVE_GCC__SYNC_INT32_CAS)  && !defined(__CHERI__)
 #define PG_HAVE_ATOMIC_COMPARE_EXCHANGE_U32
 static inline bool
 pg_atomic_compare_exchange_u32_impl(volatile pg_atomic_uint32 *ptr,
 									uint32 *expected, uint32 newval)
 {
+#ifdef __CHERI__
+	// XXXAR: this won't work as there is no version that returns the old value
+	// return (bool)atomic_cmpset_64(&ptr->value, expected, newval);
+#error "Not implemented"
+#else
 	bool	ret;
 	uint32	current;
 	current = __sync_val_compare_and_swap(&ptr->value, *expected, newval);
 	ret = current == *expected;
 	*expected = current;
 	return ret;
+#endif
 }
 #endif
 
@@ -181,36 +208,51 @@ pg_atomic_compare_exchange_u32_impl(volatile pg_atomic_uint32 *ptr,
 static inline uint32
 pg_atomic_fetch_add_u32_impl(volatile pg_atomic_uint32 *ptr, int32 add_)
 {
+#ifdef __CHERI__
+	return atomic_fetchadd_32(&ptr->value, add_);
+#else
 	return __sync_fetch_and_add(&ptr->value, add_);
+#endif
 }
 #endif
 
 
 #if !defined(PG_DISABLE_64_BIT_ATOMICS)
 
-#if !defined(PG_HAVE_ATOMIC_COMPARE_EXCHANGE_U64) && defined(HAVE_GCC__ATOMIC_INT64_CAS)
+#if !defined(PG_HAVE_ATOMIC_COMPARE_EXCHANGE_U64) && defined(HAVE_GCC__ATOMIC_INT64_CAS) && !defined(__CHERI__)
 #define PG_HAVE_ATOMIC_COMPARE_EXCHANGE_U64
 static inline bool
 pg_atomic_compare_exchange_u64_impl(volatile pg_atomic_uint64 *ptr,
 									uint64 *expected, uint64 newval)
 {
+#ifdef __CHERI__
+	// XXXAR: this won't work as there is no version that returns the old value
+	// return (bool)atomic_cmpset_64(&ptr->value, expected, newval);
+#error "Not implemented"
+#else
 	return __atomic_compare_exchange_n(&ptr->value, expected, newval, false,
 									   __ATOMIC_SEQ_CST, __ATOMIC_SEQ_CST);
+#endif
 }
 #endif
 
-#if !defined(PG_HAVE_ATOMIC_COMPARE_EXCHANGE_U64) && defined(HAVE_GCC__SYNC_INT64_CAS)
+#if !defined(PG_HAVE_ATOMIC_COMPARE_EXCHANGE_U64) && defined(HAVE_GCC__SYNC_INT64_CAS) && !defined(__CHERI__)
 #define PG_HAVE_ATOMIC_COMPARE_EXCHANGE_U64
 static inline bool
 pg_atomic_compare_exchange_u64_impl(volatile pg_atomic_uint64 *ptr,
 									uint64 *expected, uint64 newval)
 {
+#ifdef __CHERI__
+	// XXXAR: this won't work as there is no version that returns the old value
+	// return (bool)atomic_cmpset_64(&ptr->value, expected, newval);
+#error "Not implemented"
 	bool	ret;
 	uint64	current;
 	current = __sync_val_compare_and_swap(&ptr->value, *expected, newval);
 	ret = current == *expected;
 	*expected = current;
 	return ret;
+#endif
 }
 #endif
 
@@ -219,7 +261,11 @@ pg_atomic_compare_exchange_u64_impl(volatile pg_atomic_uint64 *ptr,
 static inline uint64
 pg_atomic_fetch_add_u64_impl(volatile pg_atomic_uint64 *ptr, int64 add_)
 {
+#ifdef __CHERI__
+	return atomic_fetchadd_64(&ptr->value, add_);
+#else
 	return __sync_fetch_and_add(&ptr->value, add_);
+#endif
 }
 #endif
 
