@@ -85,7 +85,7 @@ static bool include_origin = false;
  * WAL record.
  */
 static XLogRecData hdr_rdt;
-static char *hdr_scratch = NULL;
+static unsigned char *hdr_scratch = NULL;
 
 #define SizeOfXlogOrigin	(sizeof(RepOriginId) + sizeof(char))
 
@@ -482,7 +482,7 @@ XLogRecordAssemble(RmgrId rmid, uint8 info,
 	registered_buffer *prev_regbuf = NULL;
 	XLogRecData *rdt_datas_last;
 	XLogRecord *rechdr;
-	char	   *scratch = hdr_scratch;
+	unsigned char	   *scratch = hdr_scratch;
 
 	/*
 	 * Note: this function can be called multiple times for the same record.
@@ -495,7 +495,7 @@ XLogRecordAssemble(RmgrId rmid, uint8 info,
 
 	hdr_rdt.next = NULL;
 	rdt_datas_last = &hdr_rdt;
-	hdr_rdt.data = hdr_scratch;
+	hdr_rdt.data = (char*)hdr_scratch;
 
 	/*
 	 * Make an rdata chain containing all the data portions of all block

@@ -1073,7 +1073,7 @@ WriteEmptyXLOG(void)
 	char		path[MAXPGPATH];
 	int			fd;
 	int			nbytes;
-	char	   *recptr;
+	unsigned char	   *recptr;
 
 	/* Use malloc() to ensure buffer is MAXALIGNED */
 	buffer = (char *) pg_malloc(XLOG_BLCKSZ);
@@ -1091,7 +1091,7 @@ WriteEmptyXLOG(void)
 	longpage->xlp_xlog_blcksz = XLOG_BLCKSZ;
 
 	/* Insert the initial checkpoint record */
-	recptr = (char *) page + SizeOfXLogLongPHD;
+	recptr = (unsigned char *) page + SizeOfXLogLongPHD;
 	record = (XLogRecord *) recptr;
 	record->xl_prev = 0;
 	record->xl_xid = InvalidTransactionId;

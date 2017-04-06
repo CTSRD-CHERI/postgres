@@ -4788,7 +4788,7 @@ BootStrapXLOG(void)
 	XLogPageHeader page;
 	XLogLongPageHeader longpage;
 	XLogRecord *record;
-	char	   *recptr;
+	unsigned char	   *recptr;
 	bool		use_existent;
 	uint64		sysidentifier;
 	struct timeval tv;
@@ -4863,7 +4863,7 @@ BootStrapXLOG(void)
 	longpage->xlp_xlog_blcksz = XLOG_BLCKSZ;
 
 	/* Insert the initial checkpoint record */
-	recptr = ((char *) page + SizeOfXLogLongPHD);
+	recptr = ((unsigned char *) page + SizeOfXLogLongPHD);
 	record = (XLogRecord *) recptr;
 	record->xl_prev = 0;
 	record->xl_xid = InvalidTransactionId;
