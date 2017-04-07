@@ -91,6 +91,7 @@ atomic_fcmpset_32(__volatile uint32_t *p, uint32_t *cmpval, uint32_t newval)
 static inline uint64_t
 atomic_fcmpset_64(__volatile uint64_t *p, uint64_t *cmpval, uint64_t newval)
 {
+	uint64_t ret;
 	uint64_t tmp;
 	uint64_t expected = *cmpval;
 
@@ -145,13 +146,15 @@ pg_atomic_fetch_add_u64_impl(volatile pg_atomic_uint64 *ptr, int64 add_)
 static inline void
 pg_atomic_write_u64_impl(volatile pg_atomic_uint64 *ptr, uint64 val)
 {
-	atomic_store_64(&ptr->value, val);
+	atomic_set_64(&ptr->value, val);
 }
 
 #define PG_HAVE_ATOMIC_READ_U64
 static inline uint64
 pg_atomic_read_u64_impl(volatile pg_atomic_uint64 *ptr)
 {
-	return atomic_load_64(&ptr->value);
+	uint64_t ret;
+	atomic_load_64(&ptr->value, &ret);
+	return ret;
 }
 
