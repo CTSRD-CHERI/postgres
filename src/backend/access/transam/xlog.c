@@ -4876,7 +4876,7 @@ BootStrapXLOG(void)
 	*(recptr++) = sizeof(checkPoint);
 	memcpy(recptr, &checkPoint, sizeof(checkPoint));
 	recptr += sizeof(checkPoint);
-	Assert(recptr - (char *) record == record->xl_tot_len);
+	Assert(recptr - (unsigned char *) record == record->xl_tot_len);
 
 	INIT_CRC32C(crc);
 	COMP_CRC32C(crc, ((char *) record) + SizeOfXLogRecord, record->xl_tot_len - SizeOfXLogRecord);
