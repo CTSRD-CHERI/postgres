@@ -60,10 +60,10 @@ pg_atomic_init_flag_impl(volatile pg_atomic_flag *ptr)
 	pg_atomic_clear_flag_impl(ptr);
 }
 
-#ifdef __CHERI_PURE_CAPABILITY__
+#ifdef __CHERI_PURE_CAPABILITY__s
 /* machine/atomic.h does not have a purecap implementation yet! */
 static inline uint32_t
-atomic_fcmpset_32(__volatile uint32_t *p, uint32_t *cmpval, uint32_t newval)
+atomic_fcmpset_32_copy(__volatile uint32_t *p, uint32_t *cmpval, uint32_t newval)
 {
 	uint32_t ret;
 	uint32_t tmp;
@@ -89,7 +89,7 @@ atomic_fcmpset_32(__volatile uint32_t *p, uint32_t *cmpval, uint32_t newval)
 }
 
 static inline uint64_t
-atomic_fcmpset_64(__volatile uint64_t *p, uint64_t *cmpval, uint64_t newval)
+atomic_fcmpset_64_copy(__volatile uint64_t *p, uint64_t *cmpval, uint64_t newval)
 {
 	uint64_t ret;
 	uint64_t tmp;
@@ -118,12 +118,12 @@ atomic_fcmpset_64(__volatile uint64_t *p, uint64_t *cmpval, uint64_t newval)
 /* Use the slow fallback code for now (atomic_fcmpset() is not implemented for CHERI) */
 #define PG_HAVE_ATOMIC_COMPARE_EXCHANGE_U32
 static inline bool pg_atomic_compare_exchange_u32_impl(volatile pg_atomic_uint32 *ptr, uint32 *expected, uint32 newval) {
-	return (bool)atomic_fcmpset_32(&ptr->value, expected, newval);
+	return (bool)atomic_fcmpset_32_copy(&ptr->value, expected, newval);
 }
 
 #define PG_HAVE_ATOMIC_COMPARE_EXCHANGE_U64
 static inline bool pg_atomic_compare_exchange_u64_impl(volatile pg_atomic_uint64 *ptr, uint64 *expected, uint64 newval) {
-	return (bool)atomic_fcmpset_64(&ptr->value, expected, newval);
+	return (bool)atomic_fcmpset_64_copy(&ptr->value, expected, newval);
 }
 
 #define PG_HAVE_ATOMIC_FETCH_ADD_U32
