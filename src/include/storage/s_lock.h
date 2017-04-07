@@ -630,8 +630,8 @@ do \
 #include <machine/atomic.h>
 /* TODO: use acquire/release semantics for minor perf improvement */
 /* machine/atomic.h returns zero on failure so we need to invert the result */
-#define TAS(lock) (!atomic_cmpset_32(lock, 0, 1))
-#define S_UNLOCK(lock) atomic_set_32(lock, 0)
+#define TAS(lock) (!atomic_cmpset_acq_32(lock, 0, 1))
+#define S_UNLOCK(lock) atomic_set_rel_32(lock, 0)
 
 #endif /* __CHERI__ */
 
