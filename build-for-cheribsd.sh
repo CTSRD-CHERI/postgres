@@ -17,6 +17,7 @@ CHERISDK="${CHERI_ROOT}/output/sdk256/bin"
 CHERIBSD_SYSROOT="${CHERI_ROOT}/output/sdk256/sysroot"
 READLINE_INCLUDE_DIR=${CHERIBSD_SYSROOT}/usr/include/edit/
 INSTALL_DIR=${CHERI_ROOT}/output/rootfs256
+#CFLAGS_LIBSTATCOUNTERS="-Wl,--whole-archive -lstatcounters -Wl,--no-whole-archive"
 
 export PATH=${CHERISDK}:${CHERILDDIR}:$PATH
 export CC=${CHERISDK}/clang
@@ -24,8 +25,8 @@ export CXX=${CHERISDK}/clang++
 COMMON_FLAGS="-pipe --sysroot=${CHERIBSD_SYSROOT} -B${CHERISDK} -target cheri-unknown-freebsd -mabi=${MABI} -msoft-float -mxgot -O0 -ggdb -static -integrated-as"
 COMPILE_FLAGS="${COMMON_FLAGS} -isystem ${READLINE_INCLUDE_DIR} -Werror=cheri-capability-misuse -Werror=implicit-function-declaration -Werror=format -Werror=undefined-internal -Werror=incompatible-pointer-types"
 
-#env PRINTF_SIZE_T_SUPPORT=yes "CFLAGS=${COMPILE_FLAGS}" "CXXFLAGS=${COMPILE_FLAGS}" "CPPFLAGS=${COMMON_FLAGS}" "LDFLAGS=${COMMON_FLAGS} -fuse-ld=lld -pthread -Wl,-melf64btsmip_cheri_fbsd" sh ./configure --host=cheri-unknown-freebsd --target=cheri-unknown-freebsd --build=x86_64-unknown-freebsd --prefix=/postgres/cheri/ --without-libxml --without-readline --without-gssapi
-env PRINTF_SIZE_T_SUPPORT=yes "CFLAGS=${COMPILE_FLAGS}" "CXXFLAGS=${COMPILE_FLAGS}" "CPPFLAGS=${COMMON_FLAGS}" "LDFLAGS=${COMMON_FLAGS} -pthread -Wl,-melf64btsmip_cheri_fbsd" sh ./configure --host=cheri-unknown-freebsd --target=cheri-unknown-freebsd --build=x86_64-unknown-freebsd --prefix=/postgres/cheri/ --without-libxml --without-readline --without-gssapi
+#env PRINTF_SIZE_T_SUPPORT=yes "CFLAGS=${COMPILE_FLAGS}" "CXXFLAGS=${COMPILE_FLAGS}" "CPPFLAGS=${COMMON_FLAGS}" "LDFLAGS=${COMMON_FLAGS} ${CFLAGS_LIBSTATCOUNTERS} -fuse-ld=lld -pthread -Wl,-melf64btsmip_cheri_fbsd" sh ./configure --host=cheri-unknown-freebsd --target=cheri-unknown-freebsd --build=x86_64-unknown-freebsd --prefix=/postgres/cheri/ --without-libxml --without-readline --without-gssapi
+env PRINTF_SIZE_T_SUPPORT=yes "CFLAGS=${COMPILE_FLAGS}" "CXXFLAGS=${COMPILE_FLAGS}" "CPPFLAGS=${COMMON_FLAGS}" "LDFLAGS=${COMMON_FLAGS} ${CFLAGS_LIBSTATCOUNTERS} -pthread -Wl,-melf64btsmip_cheri_fbsd" sh ./configure --host=cheri-unknown-freebsd --target=cheri-unknown-freebsd --build=x86_64-unknown-freebsd --prefix=/postgres/cheri/ --without-libxml --without-readline --without-gssapi
 #INSTALL_DIR=/exports/users/alr48
 gmake -j8
 gmake install DESTDIR=${INSTALL_DIR}
