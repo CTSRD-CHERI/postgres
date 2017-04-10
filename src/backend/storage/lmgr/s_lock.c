@@ -309,13 +309,13 @@ main()
 	test_lock.pad1 = test_lock.pad2 = 0x44;
 
 	S_INIT_LOCK(&test_lock.lock);
+	printf("S_INIT_LOCK: %d\n", test_lock.lock);
 
 	if (test_lock.pad1 != 0x44 || test_lock.pad2 != 0x44)
 	{
 		printf("S_LOCK_TEST: failed, declared datatype is wrong size\n");
 		return 1;
 	}
-
 	if (!S_LOCK_FREE(&test_lock.lock))
 	{
 		printf("S_LOCK_TEST: failed, lock not initialized\n");
@@ -323,6 +323,7 @@ main()
 	}
 
 	S_LOCK(&test_lock.lock);
+	printf("SLOCK: %d\n", test_lock.lock);
 
 	if (test_lock.pad1 != 0x44 || test_lock.pad2 != 0x44)
 	{
@@ -337,6 +338,7 @@ main()
 	}
 
 	S_UNLOCK(&test_lock.lock);
+	printf("S_UNLOCK: %d\n", test_lock.lock);
 
 	if (test_lock.pad1 != 0x44 || test_lock.pad2 != 0x44)
 	{
@@ -351,6 +353,7 @@ main()
 	}
 
 	S_LOCK(&test_lock.lock);
+	printf("S_LOCK: %d\n", test_lock.lock);
 
 	if (test_lock.pad1 != 0x44 || test_lock.pad2 != 0x44)
 	{
@@ -369,7 +372,7 @@ main()
 	printf("             if S_LOCK() and TAS() are working.\n");
 	fflush(stdout);
 
-	s_lock(&test_lock.lock, __FILE__, __LINE__);
+	s_lock(&test_lock.lock, __FILE__, __LINE__, __func__);
 
 	printf("S_LOCK_TEST: failed, lock not locked\n");
 	return 1;
