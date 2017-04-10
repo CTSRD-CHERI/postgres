@@ -71,6 +71,7 @@ pg_atomic_fcmpset_32(__volatile uint32_t *p, uint32_t *cmpval, uint32_t newval)
 
 	__asm __volatile (
 		"1:\n\t"
+		QEMU_TLB_WORKAROUND32("%[ptr]")
 		"cllw	%[ret], %[ptr]\n\t"		/* load old value */
 		"bne	%[ret], %[expected], 2f\n\t"	/* compare */
 		"move	%[tmp], %[ret]\n\t"		/* save loaded value */
@@ -97,6 +98,7 @@ pg_atomic_fcmpset_64(__volatile uint64_t *p, uint64_t *cmpval, uint64_t newval)
 
 	__asm __volatile (
 		"1:\n\t"
+		QEMU_TLB_WORKAROUND64("%[ptr]")
 		"clld	%[ret], %[ptr]\n\t"		/* load old value */
 		"bne	%[ret], %[expected], 2f\n\t"	/* compare */
 		"move	%[tmp], %[ret]\n\t"		/* save loaded value */
