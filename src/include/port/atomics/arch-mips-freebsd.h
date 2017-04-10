@@ -1,3 +1,8 @@
+/* intentionally no include guards, should only be included by atomics.h */
+#ifndef INSIDE_ATOMICS_H
+#error "should be included via atomics.h"
+#endif
+
 #include <machine/atomic.h>
 
 #define PG_HAVE_ATOMIC_U32_SUPPORT
@@ -61,32 +66,52 @@ pg_atomic_init_flag_impl(volatile pg_atomic_flag *ptr)
 	pg_atomic_clear_flag_impl(ptr);
 }
 
-#ifdef __CHERI_PURE_CAPABILITY__
-/* machine/atomic.h does not have a purecap implementation yet! */
+/*
+ * XXXAR: we can't use the implementation from machine/atomic.h because
+ * that only sets the old value on failure, but postgres expects it to always
+ * be set! I have no idea why that is different because on success it should
+ * be the same so there is no point storing it....
+ */
 static inline uint32_t
 pg_atomic_fcmpset_32(__volatile uint32_t *p, uint32_t *cmpval, uint32_t newval)
 {
 	uint32_t ret;
-	uint32_t tmp;
-	uint32_t expected = *cmpval;
-
+#ifndef __CHERI_PURE_CAPABILITY__
 	__asm __volatile (
 		"1:\n\t"
-		QEMU_TLB_WORKAROUND32("%[ptr]")
-		"cllw	%[ret], %[ptr]\n\t"		/* load old value */
-		"bne	%[ret], %[expected], 2f\n\t"	/* compare */
-		"move	%[tmp], %[ret]\n\t"		/* save loaded value */
+		"ll	%0, %1\n\t"		/* load old value */
+		"bne	%0, %4, 2f\n\t"		/* compare */
+		"move	%0, %3\n\t"		/* value to store */
+		"sc	%0, %1\n\t"		/* attempt to store */
+		"beqz	%0, 1b\n\t"		/* if it failed, spin */
+		"j	3f\n\t"
+		"2:\n\t"
+		"li	%0, 0\n\t"
+		"3:\n\t"
+		"sw	%0, %2\n"		/* save old value */
+		: "=&r" (ret), "+m" (*p), "=m" (*cmpval)
+		: "r" (newval), "r" (*cmpval)
+		: "memory");
+#else
+	uint32_t tmp;
+	uint32_t expected = *cmpval;
+	__asm __volatile (
+		"1:\n\t"
+		"cllw	%[old], %[ptr]\n\t"		/* load old value */
+		"bne	%[old], %[expected], 2f\n\t"	/* compare */
+		"nop\n\t"				/* branch delay slot */
 		"cscw	%[ret], %[newval], %[ptr]\n\t"	/* attempt to store */
 		"beqz	%[ret], 1b\n\t"			/* if it failed, spin */
 		"j	3f\n\t"
 		"2:\n\t"
-		"csw	%[tmp], $0, 0(%[cmpval])\n\t"	/* store loaded value */
 		"li	%[ret], 0\n\t"
-		"3:\n"
-		: [ret] "=&r" (ret), [tmp] "=&r" (tmp), [ptr]"=C" (p),
-		    [cmpval]"=C" (cmpval)
+		"3:\n\t"
+		"csw	%[old], $0, 0(%[cmpval])\n"	/* store loaded value */
+		: [ret] "=&r" (ret), [old] "=&r" (tmp), [ptr]"+C" (p),
+		    [cmpval]"+C" (cmpval)
 		: [newval] "r" (newval), [expected] "r" (expected)
 		: "memory");
+#endif
 	return ret;
 }
 
@@ -94,32 +119,47 @@ static inline uint64_t
 pg_atomic_fcmpset_64(__volatile uint64_t *p, uint64_t *cmpval, uint64_t newval)
 {
 	uint64_t ret;
+
+#ifndef __CHERI_PURE_CAPABILITY__
+	__asm __volatile (
+		"1:\n\t"
+		"lld	%0, %1\n\t"		/* load old value */
+		"bne	%0, %4, 2f\n\t"		/* compare */
+		"move	%0, %3\n\t"		/* value to store */
+		"scd	%0, %1\n\t"		/* attempt to store */
+		"beqz	%0, 1b\n\t"		/* if it failed, spin */
+		"j	3f\n\t"
+		"2:\n\t"
+		"li	%0, 0\n\t"
+		"3:\n\t"
+		"sd	%0, %2\n"		/* save old value */
+		: "=&r" (ret), "+m" (*p), "=m" (*cmpval)
+		: "r" (newval), "r" (*cmpval)
+		: "memory");
+#else
 	uint64_t tmp;
 	uint64_t expected = *cmpval;
 
 	__asm __volatile (
 		"1:\n\t"
-		QEMU_TLB_WORKAROUND64("%[ptr]")
-		"clld	%[ret], %[ptr]\n\t"		/* load old value */
-		"bne	%[ret], %[expected], 2f\n\t"	/* compare */
-		"move	%[tmp], %[ret]\n\t"		/* save loaded value */
+		"cld	%[old], $0, 0(%[cmpval])\n\t"	/* get expected value */
+		"clld	%[old], %[ptr]\n\t"		/* load old value */
+		"bne	%[old], %[expected], 2f\n\t"	/* compare */
+		"nop\n\t"				/* branch delay slot */
 		"cscd	%[ret], %[newval], %[ptr]\n\t"	/* attempt to store */
 		"beqz	%[ret], 1b\n\t"			/* if it failed, spin */
 		"j	3f\n\t"
 		"2:\n\t"
-		"csd	%[tmp], $0, 0(%[cmpval])\n\t"	/* store loaded value */
 		"li	%[ret], 0\n\t"
-		"3:\n"
-		: [ret] "=&r" (ret), [tmp] "=&r" (tmp), [ptr]"=C" (p),
-		    [cmpval]"=C" (cmpval)
+		"3:\n\t"
+		"csd	%[old], $0, 0(%[cmpval])\n"	/* store loaded value */
+		: [ret] "=&r" (ret), [old] "=&r" (tmp), [ptr]"+C" (p),
+		    [cmpval]"+C" (cmpval)
 		: [newval] "r" (newval), [expected] "r" (expected)
 		: "memory");
+#endif
 	return ret;
 }
-#else
-#define pg_atomic_fcmpset_32 atomic_fcmpset_32
-#define pg_atomic_fcmpset_64 atomic_fcmpset_64
-#endif
 
 /* Use the slow fallback code for now (atomic_fcmpset() is not implemented for CHERI) */
 #define PG_HAVE_ATOMIC_COMPARE_EXCHANGE_U32
