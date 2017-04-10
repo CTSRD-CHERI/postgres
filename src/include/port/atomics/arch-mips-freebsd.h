@@ -162,3 +162,14 @@ pg_atomic_read_u64_impl(volatile pg_atomic_uint64 *ptr)
 	return atomic_load_acq_64(&ptr->value);
 }
 
+#define PG_HAVE_ATOMIC_FETCH_OR_U32
+static inline uint32
+pg_atomic_fetch_or_u32_impl(volatile pg_atomic_uint32 *ptr, uint32 or_) {
+	return atomic_readandset_32(&ptr->value, or_);
+}
+
+#define PG_HAVE_ATOMIC_FETCH_OR_U64
+static inline uint64
+pg_atomic_fetch_or_u64_impl(volatile pg_atomic_uint64 *ptr, uint64 or_) {
+	return atomic_readandset_64(&ptr->value, or_);
+}
