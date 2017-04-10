@@ -192,11 +192,15 @@ static lwlock_stats lwlock_stats_dummy;
 #endif
 
 #ifdef LOCK_DEBUG
-bool		Trace_lwlocks = false;
+bool		Trace_lwlocks = true;
 
 inline static void
 PRINT_LWDEBUG(const char *where, LWLock *lock, LWLockMode mode)
 {
+// 	int			id = T_ID(lock);
+// 	uint32		state = pg_atomic_read_u32(&lock->state);
+// 	printf("%s: %d\n%d: %s(%s, id=%d): excl %u shared %u haswaiters %u waiters %u rOK %d\n",  __func__, Trace_lwlocks,
+// 		MyProcPid, where, id < NUM_INDIVIDUAL_LWLOCKS ? MainLWLockNames[id] :  T_NAME(lock), T_ID(lock), (state & LW_VAL_EXCLUSIVE) != 0, state & LW_SHARED_MASK, (state & LW_FLAG_HAS_WAITERS) != 0, pg_atomic_read_u32(&lock->nwaiters), (state & LW_FLAG_RELEASE_OK) != 0);
 	/* hide statement & context here, otherwise the log is just too verbose */
 	if (Trace_lwlocks)
 	{
@@ -205,8 +209,8 @@ PRINT_LWDEBUG(const char *where, LWLock *lock, LWLockMode mode)
 
 		if (lock->tranche == 0 && id < NUM_INDIVIDUAL_LWLOCKS)
 			ereport(LOG,
-					(errhidestmt(true),
-					 errhidecontext(true),
+					(/*errhidestmt(true),
+					 errhidecontext(true),*/
 					 errmsg_internal("%d: %s(%s): excl %u shared %u haswaiters %u waiters %u rOK %d",
 									 MyProcPid,
 									 where, MainLWLockNames[id],
@@ -217,8 +221,8 @@ PRINT_LWDEBUG(const char *where, LWLock *lock, LWLockMode mode)
 									 (state & LW_FLAG_RELEASE_OK) != 0)));
 		else
 			ereport(LOG,
-					(errhidestmt(true),
-					 errhidecontext(true),
+					(/*errhidestmt(true),
+					 errhidecontext(true),*/
 					 errmsg_internal("%d: %s(%s %d): excl %u shared %u haswaiters %u waiters %u rOK %d",
 									 MyProcPid,
 									 where, T_NAME(lock), id,
@@ -233,6 +237,10 @@ PRINT_LWDEBUG(const char *where, LWLock *lock, LWLockMode mode)
 inline static void
 LOG_LWDEBUG(const char *where, LWLock *lock, const char *msg)
 {
+// 	int			id = T_ID(lock);
+// 	uint32		state = pg_atomic_read_u32(&lock->state);
+// 	printf("%s: %d\n%d: %s(%s, id=%d): excl %u shared %u haswaiters %u waiters %u rOK %d\n",  __func__, Trace_lwlocks,
+// 		MyProcPid, where, id < NUM_INDIVIDUAL_LWLOCKS ? MainLWLockNames[id] :  T_NAME(lock), T_ID(lock), (state & LW_VAL_EXCLUSIVE) != 0, state & LW_SHARED_MASK, (state & LW_FLAG_HAS_WAITERS) != 0, pg_atomic_read_u32(&lock->nwaiters), (state & LW_FLAG_RELEASE_OK) != 0);
 	/* hide statement & context here, otherwise the log is just too verbose */
 	if (Trace_lwlocks)
 	{
@@ -240,22 +248,22 @@ LOG_LWDEBUG(const char *where, LWLock *lock, const char *msg)
 
 		if (lock->tranche == 0 && id < NUM_INDIVIDUAL_LWLOCKS)
 			ereport(LOG,
-					(errhidestmt(true),
-					 errhidecontext(true),
+					(/*errhidestmt(true),
+					 errhidecontext(true),*/
 					 errmsg_internal("%s(%s): %s", where,
 									 MainLWLockNames[id], msg)));
 		else
 			ereport(LOG,
-					(errhidestmt(true),
-					 errhidecontext(true),
+					(/*errhidestmt(true),
+					 errhidecontext(true),*/
 					 errmsg_internal("%s(%s %d): %s", where,
 									 T_NAME(lock), id, msg)));
 	}
 }
-
 #else							/* not LOCK_DEBUG */
 #define PRINT_LWDEBUG(a,b,c) ((void)0)
 #define LOG_LWDEBUG(a,b,c) ((void)0)
+#error nodebug
 #endif   /* LOCK_DEBUG */
 
 #ifdef LWLOCK_STATS
@@ -716,6 +724,8 @@ LWLockInitialize(LWLock *lock, int tranche_id)
 #endif
 	lock->tranche = tranche_id;
 	dlist_init(&lock->waiters);
+	// printf("%s: State=0x%x\n", __func__, pg_atomic_read_u32(&lock->state));
+
 }
 
 /*
@@ -781,6 +791,8 @@ static bool
 LWLockAttemptLock(LWLock *lock, LWLockMode mode)
 {
 	uint32		old_state;
+	printf("%s pre: State=0x%x\n", __func__, pg_atomic_read_u32(&lock->state));
+
 
 	AssertArg(mode == LW_EXCLUSIVE || mode == LW_SHARED);
 
@@ -811,6 +823,9 @@ LWLockAttemptLock(LWLock *lock, LWLockMode mode)
 				desired_state += LW_VAL_SHARED;
 		}
 
+
+		printf("%s pre: cmpxcg: old=0x%x, desired=0x%x\n", __func__, old_state, desired_state);
+
 		/*
 		 * Attempt to swap in the state we are expecting. If we didn't see
 		 * lock to be free, that's just the old value. If we saw it as free,
@@ -824,6 +839,7 @@ LWLockAttemptLock(LWLock *lock, LWLockMode mode)
 		if (pg_atomic_compare_exchange_u32(&lock->state,
 										   &old_state, desired_state))
 		{
+			printf("%s pre: after cmpxcg: old=0x%x\n", __func__, old_state);
 			if (lock_free)
 			{
 				/* Great! Got the lock. */
@@ -831,10 +847,13 @@ LWLockAttemptLock(LWLock *lock, LWLockMode mode)
 				if (mode == LW_EXCLUSIVE)
 					lock->owner = MyProc;
 #endif
+				printf("%s success: State=0x%x\n", __func__, pg_atomic_read_u32(&lock->state));
 				return false;
 			}
-			else
+			else {
+				printf("%s failure: State=0x%x\n", __func__, pg_atomic_read_u32(&lock->state));
 				return true;	/* someobdy else has the lock */
+			}
 		}
 	}
 	pg_unreachable();
@@ -859,6 +878,7 @@ LWLockWaitListLock(LWLock *lock)
 	lwstats = get_lwlock_stats_entry(lock);
 #endif
 
+	printf("%s pre: State=0x%x\n", __func__, pg_atomic_read_u32(&lock->state));
 	while (true)
 	{
 		/* always try once to acquire lock directly */
@@ -888,6 +908,7 @@ LWLockWaitListLock(LWLock *lock)
 		 * we're attempting to get it again.
 		 */
 	}
+	printf("%s post: State=0x%x\n", __func__, pg_atomic_read_u32(&lock->state));
 
 #ifdef LWLOCK_STATS
 	lwstats->spin_delay_count += delays;
@@ -904,8 +925,9 @@ static void
 LWLockWaitListUnlock(LWLock *lock)
 {
 	uint32 old_state PG_USED_FOR_ASSERTS_ONLY;
-
+	printf("%s pre: State=0x%x\n", __func__, pg_atomic_read_u32(&lock->state));
 	old_state = pg_atomic_fetch_and_u32(&lock->state, ~LW_FLAG_LOCKED);
+	printf("%s post: State=0x%x\n", __func__, pg_atomic_read_u32(&lock->state));
 
 	Assert(old_state & LW_FLAG_LOCKED);
 }
@@ -924,6 +946,7 @@ LWLockWakeup(LWLock *lock)
 	dlist_init(&wakeup);
 
 	new_release_ok = true;
+	printf("%s pre: State=0x%x\n", __func__, pg_atomic_read_u32(&lock->state));
 
 	/* lock wait list while collecting backends to wake up */
 	LWLockWaitListLock(lock);
@@ -1013,6 +1036,8 @@ LWLockWakeup(LWLock *lock)
 		waiter->lwWaiting = false;
 		PGSemaphoreUnlock(&waiter->sem);
 	}
+	printf("%s post: State=0x%x\n", __func__, pg_atomic_read_u32(&lock->state));
+
 }
 
 /*
@@ -1174,6 +1199,7 @@ LWLockAcquire(LWLock *lock, LWLockMode mode)
 #endif
 
 	AssertArg(mode == LW_SHARED || mode == LW_EXCLUSIVE);
+	printf("%s pre: State=0x%x\n", __func__, pg_atomic_read_u32(&lock->state));
 
 	PRINT_LWDEBUG("LWLockAcquire", lock, mode);
 
@@ -1323,6 +1349,7 @@ LWLockAcquire(LWLock *lock, LWLockMode mode)
 	while (extraWaits-- > 0)
 		PGSemaphoreUnlock(&proc->sem);
 
+	printf("%s post: State=0x%x\n", __func__, pg_atomic_read_u32(&lock->state));
 	return result;
 }
 
