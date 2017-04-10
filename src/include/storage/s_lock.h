@@ -628,7 +628,6 @@ do \
 
 #else /* __CHERI__ */
 #include <machine/atomic.h>
-/* TODO: use acquire/release semantics for minor perf improvement */
 /* machine/atomic.h returns zero on failure so we need to invert the result */
 #define TAS(lock) (!atomic_cmpset_acq_32(lock, 0, 1))
 #define S_UNLOCK(lock) atomic_set_rel_32(lock, 0)
@@ -920,6 +919,7 @@ spin_delay(void)
  * unless you must!  The subroutines appear in spin.c.
  */
 typedef int slock_t;
+#error "This should not be used!"
 
 extern bool s_lock_free_sema(volatile slock_t *lock);
 extern void s_unlock_sema(volatile slock_t *lock);

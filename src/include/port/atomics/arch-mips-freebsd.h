@@ -36,7 +36,7 @@ typedef struct pg_atomic_flag
 static inline bool
 pg_atomic_test_set_flag_impl(volatile pg_atomic_flag *ptr)
 {
-	return (bool)atomic_cmpset_32(&ptr->value, 0, 1);
+	return atomic_cmpset_acq_32(&ptr->value, 0, 1) == 0;
 }
 
 #define PG_HAVE_ATOMIC_UNLOCKED_TEST_FLAG
