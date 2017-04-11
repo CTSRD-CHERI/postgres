@@ -299,7 +299,140 @@ struct test_lock_struct
 	char		pad2;
 };
 
+
+/* Needed for the atomics assertions */
+void
+ExceptionalCondition(const char *conditionName,
+					 const char *errorType,
+					 const char *fileName,
+					 int lineNumber)
+{
+	fprintf(stderr, "TRAP: %s(\"%s\", File: \"%s\", Line: %d)\n",
+		errorType, conditionName, fileName, lineNumber);
+	fflush(stderr);
+	abort();
+}
+
 volatile struct test_lock_struct test_lock;
+
+#define CHECK2(cond, fmt, ...) do {				\
+	if (!(cond)) { 						\
+		printf("FAIL: " fmt "\n", __VA_ARGS__);		\
+		exit(1);					\
+	} else {						\
+		printf("PASS: " fmt "\n", __VA_ARGS__);		\
+	} } while(0)
+
+#define CHECK(cond) CHECK2(cond, "%s", #cond)
+
+static inline void compare_impl(uint64 result, const char *result_str,
+				uint64 expected, const char* expected_str)
+{
+	CHECK2(result == expected, "%s (%ld) == %s (%ld)", result_str, result,
+		expected_str, expected);
+}
+
+#define COMPARE(result, expected) \
+	compare_impl(result, #result, expected, #expected)
+
+int check_atomics(void);
+
+int
+check_atomics(void)
+{
+	// check atomic_flag:
+	pg_atomic_flag flag;
+	pg_atomic_init_flag(&flag);
+	CHECK(pg_atomic_unlocked_test_flag(&flag));
+	COMPARE(flag.value, 0);
+	CHECK(pg_atomic_test_set_flag(&flag));
+	// locked now -> must fail
+	COMPARE(flag.value, 1);
+	CHECK(!pg_atomic_unlocked_test_flag(&flag));
+	CHECK(!pg_atomic_test_set_flag(&flag));
+	COMPARE(flag.value, 1);
+	pg_atomic_clear_flag(&flag);
+	// should succeed again after clear
+	CHECK(pg_atomic_unlocked_test_flag(&flag));
+	COMPARE(flag.value, 0);
+	CHECK(pg_atomic_test_set_flag(&flag));
+
+	// now atomic u32:
+	pg_atomic_uint32 atomic_u32;
+	pg_atomic_init_u32(&atomic_u32, 42u);
+	COMPARE(pg_atomic_read_u32(&atomic_u32), 42u);
+	pg_atomic_write_u32(&atomic_u32, 0x12345);
+	COMPARE(pg_atomic_read_u32(&atomic_u32), 0x12345);
+	pg_atomic_unlocked_write_u32(&atomic_u32, 0x654321);
+	COMPARE(pg_atomic_read_u32(&atomic_u32), 0x654321);
+	COMPARE(pg_atomic_exchange_u32(&atomic_u32, 0xdeadbeef), 0x654321);
+
+	// cmpxchg
+	uint32 old32 = 12;
+	CHECK(!pg_atomic_compare_exchange_u32(&atomic_u32, &old32, 0x101010));
+	COMPARE(old32, 0xdeadbeef);
+	// should not have changed:
+	COMPARE(pg_atomic_read_u32(&atomic_u32), 0xdeadbeef);
+	CHECK(pg_atomic_compare_exchange_u32(&atomic_u32, &old32, 0x101010));
+	COMPARE(pg_atomic_read_u32(&atomic_u32), 0x101010);
+
+	// read-modify-write:
+	COMPARE(pg_atomic_fetch_add_u32(&atomic_u32, 0x10), 0x101010);
+	COMPARE(pg_atomic_read_u32(&atomic_u32), 0x101020);
+	COMPARE(pg_atomic_fetch_sub_u32(&atomic_u32, 0x101000), 0x101020);
+	COMPARE(pg_atomic_read_u32(&atomic_u32), 0x20);
+	// bitwise
+	COMPARE(pg_atomic_fetch_or_u32(&atomic_u32, 0x100000), 0x20);
+	COMPARE(pg_atomic_read_u32(&atomic_u32), 0x100020);
+	COMPARE(pg_atomic_fetch_and_u32(&atomic_u32, 0x22), 0x100020);
+	COMPARE(pg_atomic_read_u32(&atomic_u32), 0x20);
+	// modify-then-fetch:
+	COMPARE(pg_atomic_add_fetch_u32(&atomic_u32, 0x7), 0x27);
+	COMPARE(pg_atomic_read_u32(&atomic_u32), 0x27);
+	COMPARE(pg_atomic_sub_fetch_u32(&atomic_u32, 0x26), 0x1);
+	COMPARE(pg_atomic_read_u32(&atomic_u32), 0x1);
+
+	// same again for U64:
+
+	pg_atomic_uint64 atomic_u64;
+	pg_atomic_init_u64(&atomic_u64, 42u);
+	COMPARE(pg_atomic_read_u64(&atomic_u64), 42u);
+	pg_atomic_write_u64(&atomic_u64, 0x12345);
+	COMPARE(pg_atomic_read_u64(&atomic_u64), 0x12345);
+	// no pg_atomic_unlocked_write for u64
+	// pg_atomic_unlocked_write_u64(&atomic_u64, 0x654321);
+	pg_atomic_write_u64(&atomic_u64, 0x654321);
+	COMPARE(pg_atomic_read_u64(&atomic_u64), 0x654321);
+	COMPARE(pg_atomic_exchange_u64(&atomic_u64, 0xdeadbeef), 0x654321);
+
+	// cmpxchg
+	uint64 old64 = 12;
+	CHECK(!pg_atomic_compare_exchange_u64(&atomic_u64, &old64, 0x101010));
+	COMPARE(old64, 0xdeadbeef);
+	// should not have changed:
+	COMPARE(pg_atomic_read_u64(&atomic_u64), 0xdeadbeef);
+	CHECK(pg_atomic_compare_exchange_u64(&atomic_u64, &old64, 0x101010));
+	COMPARE(pg_atomic_read_u64(&atomic_u64), 0x101010);
+
+	// read-modify-write:
+	COMPARE(pg_atomic_fetch_add_u64(&atomic_u64, 0x10), 0x101010);
+	COMPARE(pg_atomic_read_u64(&atomic_u64), 0x101020);
+	COMPARE(pg_atomic_fetch_sub_u64(&atomic_u64, 0x101000), 0x101020);
+	COMPARE(pg_atomic_read_u64(&atomic_u64), 0x20);
+	// bitwise
+	COMPARE(pg_atomic_fetch_or_u64(&atomic_u64, 0x100000), 0x20);
+	COMPARE(pg_atomic_read_u64(&atomic_u64), 0x100020);
+	COMPARE(pg_atomic_fetch_and_u64(&atomic_u64, 0x22), 0x100020);
+	COMPARE(pg_atomic_read_u64(&atomic_u64), 0x20);
+	// modify-then-fetch:
+	COMPARE(pg_atomic_add_fetch_u64(&atomic_u64, 0x7), 0x27);
+	COMPARE(pg_atomic_read_u64(&atomic_u64), 0x27);
+	COMPARE(pg_atomic_sub_fetch_u64(&atomic_u64, 0x26), 0x1);
+	COMPARE(pg_atomic_read_u64(&atomic_u64), 0x1);
+
+
+	return 0;
+}
 
 int
 main()
@@ -366,6 +499,9 @@ main()
 		printf("S_LOCK_TEST: failed, lock not re-locked\n");
 		return 1;
 	}
+
+	check_atomics();
+
 
 	printf("S_LOCK_TEST: this will print %d stars and then\n", NUM_DELAYS);
 	printf("             exit with a 'stuck spinlock' message\n");
