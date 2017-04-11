@@ -17,20 +17,19 @@ typedef struct pg_atomic_uint64
 	volatile uint64 value pg_attribute_aligned(8);
 } pg_atomic_uint64;
 
-// XXXAR: atomic_readandset is not an exchange! instead it does an or with xchg_
-// #define PG_HAVE_ATOMIC_EXCHANGE_U32
-// static inline uint32
-// pg_atomic_exchange_u32_impl(volatile pg_atomic_uint32 *ptr, uint32 xchg_)
-// {
-// 	return atomic_readandset_32(&ptr->value, xchg_);
-// }
-//
-// #define PG_HAVE_ATOMIC_EXCHANGE_U64
-// static inline uint64
-// pg_atomic_exchange_u64_impl(volatile pg_atomic_uint64 *ptr, uint64 xchg_)
-// {
-// 	return atomic_readandset_64(&ptr->value, xchg_);
-// }
+#define PG_HAVE_ATOMIC_EXCHANGE_U32
+static inline uint32
+pg_atomic_exchange_u32_impl(volatile pg_atomic_uint32 *ptr, uint32 xchg_)
+{
+	return atomic_readandset_32(&ptr->value, xchg_);
+}
+
+#define PG_HAVE_ATOMIC_EXCHANGE_U64
+static inline uint64
+pg_atomic_exchange_u64_impl(volatile pg_atomic_uint64 *ptr, uint64 xchg_)
+{
+	return atomic_readandset_64(&ptr->value, xchg_);
+}
 
 #define PG_HAVE_ATOMIC_FLAG_SUPPORT
 typedef struct pg_atomic_flag
@@ -200,16 +199,4 @@ static inline uint64
 pg_atomic_read_u64_impl(volatile pg_atomic_uint64 *ptr)
 {
 	return atomic_load_acq_64(&ptr->value);
-}
-
-#define PG_HAVE_ATOMIC_FETCH_OR_U32
-static inline uint32
-pg_atomic_fetch_or_u32_impl(volatile pg_atomic_uint32 *ptr, uint32 or_) {
-	return atomic_readandset_32(&ptr->value, or_);
-}
-
-#define PG_HAVE_ATOMIC_FETCH_OR_U64
-static inline uint64
-pg_atomic_fetch_or_u64_impl(volatile pg_atomic_uint64 *ptr, uint64 or_) {
-	return atomic_readandset_64(&ptr->value, or_);
 }
