@@ -1023,7 +1023,8 @@ vac_update_datfrozenxid(void)
 
 	heap_freetuple(tuple);
 	heap_close(relation, RowExclusiveLock);
-
+	// XXXAR: this crashes pgbench:
+#if 0
 	/*
 	 * If we were able to advance datfrozenxid or datminmxid, see if we can
 	 * truncate pg_clog and/or pg_multixact.  Also do it if the shared
@@ -1032,6 +1033,7 @@ vac_update_datfrozenxid(void)
 	if (dirty || ForceTransactionIdLimitUpdate())
 		vac_truncate_clog(newFrozenXid, newMinMulti,
 						  lastSaneFrozenXid, lastSaneMinMulti);
+#endif
 }
 
 
