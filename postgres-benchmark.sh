@@ -18,6 +18,12 @@ if test "`whoami`" = "root"; then
 	exit
 fi
 
+echo "${0}: uname:"
+uname -a
+
+echo "${0}: invariants/witness:"
+sysctl -a | grep -E '(invariants|witness)'
+
 echo "${0}: postgres binary details:"
 file "${POSTGRES}"
 
@@ -30,11 +36,14 @@ fi
 
 echo "${0}: starting postgres..."
 ${PGCTL} start -w -D "${POSTGRES_DATA}"
+
 echo "${0}: running benchmark ${NTIMES} times..."
 ${PGBENCH} -i postgres
 for i in `jot ${NTIMES}`; do
 	${PGBENCH} -c 2 -T 180 postgres 2>&1 | tee /tmp/pgbench-results.txt
 done
+
 echo "${0}: stopping postgres..."
 ${PGCTL} stop -D "${POSTGRES_DATA}"
+
 echo "${0}: done"
