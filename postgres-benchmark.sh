@@ -22,7 +22,7 @@ echo "${0}: uname:"
 uname -a
 
 echo "${0}: invariants/witness:"
-sysctl -a | grep -E '(invariants|witness)'
+sysctl -a | grep -E '(invariants|witness)' || true
 
 echo "${0}: postgres binary details:"
 file "${POSTGRES}"
