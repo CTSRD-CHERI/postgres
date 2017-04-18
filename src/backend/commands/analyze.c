@@ -111,9 +111,6 @@ analyze_rel(Oid relid, RangeVar *relation, int options,
 	AcquireSampleRowsFunc acquirefunc = NULL;
 	BlockNumber relpages = 0;
 
-	ereport(WARNING, (errmsg("skipping \"%s\" --- broken, commented out in %s", relation->relname, __func__)));
-	return;
-
 	/* Select logging level */
 	if (options & VACOPT_VERBOSE)
 		elevel = INFO;
