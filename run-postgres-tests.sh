@@ -35,11 +35,12 @@ rm -irf "$OUTPUT_DIR"
 mkdir -p "$OUTPUT_DIR/sql"
 mkdir -p "$OUTPUT_DIR/expected"
 
-if [ -e "${POSTGRES_DATA}" ]; then
-	echo "${0}: ${POSTGRES_DATA} already exists, initdb not required"
-else
-	echo "${0}: ${POSTGRES_DATA} does not exist, running initdb..."
-	${INITDB} -D "${POSTGRES_DATA}" --noclean --nosync --no-locale "$@"
-fi
+# TODO: figure out the right flags to use an existing instance
+# if [ -e "${POSTGRES_DATA}" ]; then
+# 	echo "${0}: ${POSTGRES_DATA} already exists, initdb not required"
+# else
+# 	echo "${0}: ${POSTGRES_DATA} does not exist, running initdb..."
+# 	${INITDB} -D "${POSTGRES_DATA}" --noclean --nosync --no-locale "$@"
+# fi
 
-"${POSTGRES_ROOT}/lib/pgxs/src/test/regress/pg_regress" "--inputdir=${POSTGRES_ROOT}/lib/regress/" "--bindir=${POSTGRES_ROOT}/bin" "--dlpath=${POSTGRES_ROOT}/lib"  "--schedule=${POSTGRES_ROOT}/lib/regress/serial_schedule" --no-locale "--outputdir=$OUTPUT_DIR" "--temp-instance=$POSTGRES_INSTANCE" "$@"
+"${POSTGRES_ROOT}/lib/pgxs/src/test/regress/pg_regress" "--inputdir=${POSTGRES_ROOT}/lib/regress/" "--bindir=${POSTGRES_ROOT}/bin" "--dlpath=${POSTGRES_ROOT}/lib"  "--schedule=${POSTGRES_ROOT}/lib/regress/cheri_schedule" --no-locale "--outputdir=$OUTPUT_DIR" "--temp-instance=$POSTGRES_INSTANCE" "$@"
