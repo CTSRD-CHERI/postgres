@@ -1,0 +1,171 @@
+# src/test/regress/serial_schedule
+# This should probably be in an order similar to parallel_schedule.
+test: tablespace
+test: boolean
+test: char
+test: name
+test: varchar
+test: text
+test: int2
+test: int4
+test: int8
+test: oid
+test: float4
+test: float8
+test: bit
+test: numeric
+test: txid
+test: uuid
+# BROKEN (PLPGSQL): test: enum
+test: money
+test: rangetypes
+test: pg_lsn
+test: regproc
+test: strings
+test: numerology
+test: point
+test: lseg
+test: line
+test: box
+test: path
+test: polygon
+test: circle
+test: date
+test: time
+test: timetz
+test: timestamp
+test: timestamptz
+test: interval
+test: abstime
+test: reltime
+test: tinterval
+test: inet
+test: macaddr
+test: tstypes
+test: comments
+test: geometry
+test: horology
+test: regex
+test: oidjoins
+test: type_sanity
+# BROKEN (PLPGSQL): test: opr_sanity
+test: insert
+test: insert_conflict
+test: create_function_1
+test: create_type
+test: create_table
+test: create_function_2
+test: copy
+test: copyselect
+# BROKEN (PLPGSQL): test: copydml
+test: create_misc
+test: create_operator
+test: create_index
+# BROKEN (PLPGSQL): test: create_view
+test: create_aggregate
+test: create_function_3
+test: create_cast
+test: constraints
+# BROKEN (PLPGSQL): test: triggers
+# BROKEN (PLPGSQL): test: inherit
+test: create_table_like
+test: typed_table
+test: vacuum
+test: drop_if_exists
+# BROKEN (PLPGSQL): test: updatable_views
+test: rolenames
+test: roleattributes
+test: create_am
+test: sanity_check
+# BROKEN (PLPGSQL): test: errors
+# BROKEN (PLPGSQL): test: select
+test: select_into
+test: select_distinct
+test: select_distinct_on
+test: select_implicit
+test: select_having
+test: subselect
+# BROKEN (PLPGSQL): test: union
+# BROKEN (PLPGSQL): test: case
+test: join
+# BROKEN (PLPGSQL): test: aggregates
+# BROKEN (PLPGSQL): test: transactions
+ignore: random
+test: random
+test: portals
+# BROKEN (PLPGSQL): test: arrays
+test: btree_index
+test: hash_index
+test: update
+test: delete
+test: namespace
+# XXXAR: This test appears to end up in an infinite loop running on CHERI
+# test: prepared_xacts
+test: brin
+test: gin
+test: gist
+test: spgist
+test: privileges
+test: init_privs
+test: security_label
+test: collate
+# BROKEN (PLPGSQL): test: matview
+test: lock
+test: replica_identity
+# BROKEN (PLPGSQL): test: rowsecurity
+# BROKEN (PLPGSQL): test: object_address
+test: tablesample
+# BROKEN (PLPGSQL): test: groupingsets
+test: drop_operator
+# BROKEN (PLPGSQL): test: alter_generic
+test: alter_operator
+test: misc
+test: psql
+test: async
+test: dbsize
+test: misc_functions
+# BROKEN (PLPGSQL): test: rules
+test: psql_crosstab
+# BROKEN (PLPGSQL): test: select_parallel
+test: amutils
+# BROKEN (PLPGSQL): test: select_views
+test: portals_p2
+test: foreign_key
+test: cluster
+# BROKEN (PLPGSQL): test: dependency
+# BROKEN (PLPGSQL): test: guc
+test: bitmapops
+test: combocid
+test: tsearch
+test: tsdicts
+# BROKEN (PLPGSQL): test: foreign_data
+test: window
+test: xmlmap
+test: functional_deps
+test: advisory_lock
+test: json
+test: jsonb
+test: json_encoding
+# BROKEN (PLPGSQL): test: indirect_toast
+# BROKEN (PLPGSQL): test: equivclass
+# BROKEN (PLPGSQL): test: plancache
+test: limit
+# BROKEN (PLPGSQL): test: plpgsql
+# BROKEN (PLPGSQL): test: copy2
+# BROKEN (PLPGSQL): test: temp
+# BROKEN (PLPGSQL): test: domain
+# BROKEN (PLPGSQL): test: rangefuncs
+test: prepare
+test: without_oid
+test: conversion
+# BROKEN (PLPGSQL): test: truncate
+# BROKEN (PLPGSQL): test: alter_table
+test: sequence
+# BROKEN (PLPGSQL): test: polymorphism
+test: rowtypes
+test: returning
+test: largeobject
+# BROKEN (PLPGSQL): test: with
+test: xml
+# BROKEN (PLPGSQL): test: event_trigger
+# BROKEN (PLPGSQL): test: stats
