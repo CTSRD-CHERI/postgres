@@ -25,7 +25,11 @@ echo "${0}: invariants/witness:"
 sysctl -a | grep -E '(invariants|witness)' || true
 
 echo "${0}: postgres binary details:"
-file "${POSTGRES}"
+if ! command -v file > /dev/null; then
+	echo "file binary not installed"
+else
+	file "${POSTGRES}"
+fi
 
 if [ -e "${POSTGRES_DATA}" ]; then
 	echo "${0}: ${POSTGRES_DATA} already exists, initdb not required"
