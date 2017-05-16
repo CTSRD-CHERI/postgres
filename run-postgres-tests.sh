@@ -1,7 +1,7 @@
 #!/bin/sh -e
 
 POSTGRES_ROOT="/postgres/cheri"
-POSTGRES_INSTANCE="/home/postgres/postgres-test-cheri/instance"
+POSTGRES_INSTANCE="/tmp/postgres/postgres-test-cheri/instance"
 POSTGRES_DATA="${POSTGRES_INSTANCE}/data"
 
 OUTPUT_DIR="$HOME/postgres-test-cheri/output"

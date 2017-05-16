@@ -1,7 +1,7 @@
 #!/bin/sh -e
 
 POSTGRES_ROOT="/postgres/cheri"
-POSTGRES_DATA="/home/postgres/postgres-test-cheri/instance/data"
+POSTGRES_DATA="/tmp/postgres/postgres-test-cheri/instance/data"
 POSTGRES="${POSTGRES_ROOT}/bin/postgres"
 INITDB="${POSTGRES_ROOT}/bin/initdb"
 PGCTL="${POSTGRES_ROOT}/bin/pg_ctl"
