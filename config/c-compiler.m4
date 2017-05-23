@@ -49,7 +49,7 @@ define([Ac_cachevar], [translit([pgac_cv_type_$1_64], [ *], [_p])])dnl
 AC_CACHE_CHECK([whether $1 is 64 bits], [Ac_cachevar],
 [AC_RUN_IFELSE([AC_LANG_SOURCE(
 [typedef $1 ac_int64;
-
+#include <stdlib.h>
 /*
  * These are globals to discourage the compiler from folding all the
  * arithmetic tests down to compile-time constants.

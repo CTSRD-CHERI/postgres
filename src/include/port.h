@@ -453,11 +453,13 @@ qsort_arg(void *a, size_t n, size_t es, qsort_arg_comparator cmp, void *arg)
 #define QSORT_ARG_COMPARATOR_FUNC(name, a, b) \
 	int name(void *arg, const void *a, const void *b)
 #else
-#warning "Using postgres qsort"
+/* #warning "Using postgres qsort" */
 #define qsort(a,b,c,d) pg_qsort(a,b,c,d)
 typedef int (*qsort_arg_comparator) (const void *a, const void *b, void *arg);
 extern void qsort_arg(void *base, size_t nel, size_t elsize,
 		  qsort_arg_comparator cmp, void *arg);
+#define QSORT_ARG_COMPARATOR_FUNC(name, a, b) \
+	int name(const void *a, const void *b, void* arg)
 #endif
 extern int	pg_qsort_strcmp(const void *a, const void *b);
 
