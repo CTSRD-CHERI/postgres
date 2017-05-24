@@ -1,4 +1,4 @@
-#!/bin/sh -e
+#!/bin/sh -xe
 
 POSTGRES_ROOT="/postgres/cheri"
 POSTGRES_DATA="/tmp/postgres/postgres-test-cheri/instance/data"
@@ -35,6 +35,8 @@ if [ -e "${POSTGRES_DATA}" ]; then
 	echo "${0}: ${POSTGRES_DATA} already exists, initdb not required"
 else
 	echo "${0}: ${POSTGRES_DATA} does not exist, running initdb..."
+	echo "Free disk space:"
+	df -h || true
 	${INITDB} -D "${POSTGRES_DATA}" --noclean --nosync --no-locale "$@"
 fi
 
