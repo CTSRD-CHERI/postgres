@@ -1,10 +1,11 @@
 #!/bin/sh -e
 
 POSTGRES_ROOT="/postgres/cheri"
-POSTGRES_INSTANCE="/tmp/postgres/postgres-test-cheri/instance"
+OUTPUT_ROOT="/tmp/postgres"
+POSTGRES_INSTANCE="${OUTPUT_ROOT}/postgres-test-cheri/instance"
 POSTGRES_DATA="${POSTGRES_INSTANCE}/data"
+OUTPUT_DIR="${OUTPUT_ROOT}/postgres-test-cheri/output"
 
-OUTPUT_DIR="$HOME/postgres-test-cheri/output"
 POSTGRES="${POSTGRES_ROOT}/bin/postgres"
 INITDB="${POSTGRES_ROOT}/bin/initdb"
 PGCTL="${POSTGRES_ROOT}/bin/pg_ctl"
