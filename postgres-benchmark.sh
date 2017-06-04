@@ -52,4 +52,4 @@ done
 echo "${0}: stopping postgres..."
 ${PGCTL} stop -D "${POSTGRES_DATA}"
 
-echo "${0}: done"
+echo "${0}: DONE RUNNING BENCHMARKS"
