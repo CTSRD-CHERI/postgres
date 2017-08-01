@@ -372,7 +372,12 @@ pg_SSPI_startup(PGconn *conn, int use_negotiate)
 	SECURITY_STATUS r;
 	TimeStamp	expire;
 
-	conn->sspictx = NULL;
+	if (conn->sspictx)
+	{
+		printfPQExpBuffer(&conn->errorMessage,
+					libpq_gettext("duplicate SSPI authentication request\n"));
+		return STATUS_ERROR;
+	}
 
 	/*
 	 * Retrieve credentials handle
@@ -703,6 +708,19 @@ pg_fe_sendauth(AuthRequest areq, PGconn *conn)
 				return STATUS_ERROR;
 			break;
 
+			/*
+			 * SASL authentication was introduced in version 10. Older
+			 * versions recognize the request only to give a nicer error
+			 * message. We call it "SCRAM authentication" in the error, rather
+			 * than SASL, because SCRAM is more familiar to users, and it's
+			 * the only SASL authentication mechanism that has been
+			 * implemented as of this writing, anyway.
+			 */
+		case AUTH_REQ_SASL:
+			printfPQExpBuffer(&conn->errorMessage,
+							  libpq_gettext("SCRAM authentication requires libpq version 10 or above\n"));
+			return STATUS_ERROR;
+
 		default:
 			printfPQExpBuffer(&conn->errorMessage,
 			libpq_gettext("authentication method %u not supported\n"), areq);
@@ -794,7 +812,7 @@ pg_fe_getauthname(PQExpBuffer errorMessage)
  * be sent in cleartext if it is encrypted on the client side.  This is
  * good because it ensures the cleartext password won't end up in logs,
  * pg_stat displays, etc.  We export the function so that clients won't
- * be dependent on low-level details like whether the enceyption is MD5
+ * be dependent on low-level details like whether the encryption is MD5
  * or something else.
  *
  * Arguments are the cleartext password, and the SQL name of the user it

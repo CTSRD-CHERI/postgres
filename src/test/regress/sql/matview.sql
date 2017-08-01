@@ -92,7 +92,7 @@ SELECT * FROM mvtest_tvvm;
 -- test diemv when the mv does not exist
 DROP MATERIALIZED VIEW IF EXISTS no_such_mv;
 
--- make sure invalid comination of options is prohibited
+-- make sure invalid combination of options is prohibited
 REFRESH MATERIALIZED VIEW CONCURRENTLY mvtest_tvmm WITH NO DATA;
 
 -- no tuple locks on materialized views
@@ -121,18 +121,6 @@ CREATE MATERIALIZED VIEW mv_test3 AS SELECT * FROM mv_test2 WHERE moo = 12345;
 SELECT relispopulated FROM pg_class WHERE oid = 'mv_test3'::regclass;
 
 DROP VIEW mvtest_vt1 CASCADE;
-
--- test that vacuum does not make empty matview look unpopulated
-CREATE TABLE mvtest_huge (i int);
-INSERT INTO mvtest_huge VALUES (generate_series(1,100000));
-CREATE MATERIALIZED VIEW mvtest_hugeview AS SELECT * FROM mvtest_huge WHERE i % 2 = 0;
-CREATE INDEX mvtest_hugeviewidx ON mvtest_hugeview (i);
-DELETE FROM mvtest_huge;
-REFRESH MATERIALIZED VIEW mvtest_hugeview;
-SELECT * FROM mvtest_hugeview WHERE i < 10;
-VACUUM ANALYZE mvtest_hugeview;
-SELECT * FROM mvtest_hugeview WHERE i < 10;
-DROP TABLE mvtest_huge CASCADE;
 
 -- test that duplicate values on unique index prevent refresh
 CREATE TABLE mvtest_foo(a, b) AS VALUES(1, 10);

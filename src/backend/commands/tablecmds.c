@@ -6194,7 +6194,7 @@ ATAddCheckConstraint(List **wqueue, AlteredTableInfo *tab, Relation rel,
 
 	/*
 	 * Check if ONLY was specified with ALTER TABLE.  If so, allow the
-	 * contraint creation only if there are no children currently.  Error out
+	 * constraint creation only if there are no children currently.  Error out
 	 * otherwise.
 	 */
 	if (!recurse && children != NIL)
@@ -6903,9 +6903,10 @@ ATExecValidateConstraint(Relation rel, char *constrName, bool recurse,
 
 			/*
 			 * If we're recursing, the parent has already done this, so skip
-			 * it.
+			 * it.  Also, if the constraint is a NO INHERIT constraint, we
+			 * shouldn't try to look for it in the children.
 			 */
-			if (!recursing)
+			if (!recursing && !con->connoinherit)
 				children = find_all_inheritors(RelationGetRelid(rel),
 											   lockmode, NULL);
 
@@ -8916,8 +8917,8 @@ RebuildConstraintComment(AlteredTableInfo *tab, int pass, Oid objid,
 	cmd->objtype = OBJECT_TABCONSTRAINT;
 	cmd->objname = list_make3(
 				   makeString(get_namespace_name(RelationGetNamespace(rel))),
-							  makeString(RelationGetRelationName(rel)),
-							  makeString(conname));
+						   makeString(pstrdup(RelationGetRelationName(rel))),
+							  makeString(pstrdup(conname)));
 	cmd->objargs = NIL;
 	cmd->comment = comment_str;
 
