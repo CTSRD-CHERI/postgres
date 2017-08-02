@@ -28,7 +28,7 @@
  * a single item per page, unlike other index AMs.
  */
 #define BrinMaxItemSize \
-	MAXALIGN_DOWN(BLCKSZ - \
+	(size_t)MAXALIGN_DOWN(BLCKSZ - \
 				  (MAXALIGN(SizeOfPageHeaderData + \
 							sizeof(ItemIdData)) + \
 				   MAXALIGN(sizeof(BrinSpecialSpace))))
