@@ -53,6 +53,6 @@ for i in `jot ${NTIMES}`; do
 done
 
 echo "${0}: stopping postgres..."
-${PGCTL} stop -D "${POSTGRES_DATA}"
+${PGCTL} stop -w -D "${POSTGRES_DATA}"
 
 echo "${0}: DONE RUNNING BENCHMARKS"
