@@ -31,6 +31,9 @@ else
 	file "${POSTGRES}"
 fi
 
+export STATCOUNTERS_FORMAT=csv
+export STATCOUNTERS_OUTPUT="/tmp/postgres.statcounters.csv"
+
 if [ -e "${POSTGRES_DATA}" ]; then
 	echo "${0}: ${POSTGRES_DATA} already exists, initdb not required"
 else
