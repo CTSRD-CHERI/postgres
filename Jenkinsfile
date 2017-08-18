@@ -15,7 +15,7 @@ def buildProjectWithCheribuild(String projectName, String extraArgs, String targ
         dir ('cheribuild') {
             git 'https://github.com/CTSRD-CHERI/cheribuild.git'
         }
-        sdkImage.inside {
+        sdkImage.inside('-u 0') {
             env.CPU = targetCPU
             ansiColor('xterm') {
                 sh '''
