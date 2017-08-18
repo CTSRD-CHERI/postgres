@@ -19,11 +19,11 @@ def buildProjectWithCheribuild(String projectName, String extraArgs, String targ
             env.CPU = targetCPU
             ansiColor('xterm') {
                 sh '''
-                         env
-                         pwd
-                         cd $WORKSPACE
-                         ls -la
-                         '''
+                    env
+                    pwd
+                    # postgres needs bison and flex
+                    apt-get update && apt-get install -y bison flex
+                   '''
                 sh "./cheribuild/jenkins-cheri-build.py --tarball ${projectName} --cpu ${targetCPU} ${extraArgs}"
             }
         }
