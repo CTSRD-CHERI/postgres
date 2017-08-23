@@ -1,6 +1,11 @@
 #!/bin/sh -e
 
-POSTGRES_ROOT="/postgres/cheri"
+POSTGRES_ROOT="$(realpath .)"
+if ! test -e "${POSTGRES_ROOT}/run-postgres-tests.sh"; then
+   echo "You have to cd to the directory where $0 is located first!"
+   exit 1
+fi
+
 OUTPUT_ROOT="/tmp/postgres"
 POSTGRES_INSTANCE="${OUTPUT_ROOT}/postgres-test-cheri/instance"
 POSTGRES_DATA="${POSTGRES_INSTANCE}/data"
@@ -29,8 +34,11 @@ echo "${0}: invariants/witness:"
 sysctl -a | grep -E '(invariants|witness)' || true
 
 echo "${0}: postgres binary details:"
-file "${POSTGRES}"
-
+if ! command -v file > /dev/null; then
+	echo "file binary not installed"
+else
+	file "${POSTGRES}"
+fi
 
 rm -irf "$OUTPUT_DIR"
 mkdir -p "$OUTPUT_DIR/sql"
@@ -44,4 +52,4 @@ mkdir -p "$OUTPUT_DIR/expected"
 # 	${INITDB} -D "${POSTGRES_DATA}" --noclean --nosync --no-locale "$@"
 # fi
 
-"${POSTGRES_ROOT}/lib/pgxs/src/test/regress/pg_regress" "--inputdir=${POSTGRES_ROOT}/lib/regress/" "--bindir=${POSTGRES_ROOT}/bin" "--dlpath=${POSTGRES_ROOT}/lib"  "--schedule=${POSTGRES_ROOT}/lib/regress/cheri_schedule" --no-locale "--outputdir=$OUTPUT_DIR" "--temp-instance=$POSTGRES_INSTANCE" "$@"
+"${POSTGRES_ROOT}/lib/postgresql/pgxs/src/test/regress/pg_regress" "--inputdir=${POSTGRES_ROOT}/lib/regress/" "--bindir=${POSTGRES_ROOT}/bin" "--dlpath=${POSTGRES_ROOT}/lib"  "--schedule=${POSTGRES_ROOT}/lib/regress/cheri_schedule" --no-locale "--outputdir=$OUTPUT_DIR" "--temp-instance=$POSTGRES_INSTANCE" "$@"
