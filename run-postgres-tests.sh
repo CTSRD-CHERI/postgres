@@ -52,4 +52,4 @@ mkdir -p "$OUTPUT_DIR/expected"
 # 	${INITDB} -D "${POSTGRES_DATA}" --noclean --nosync --no-locale "$@"
 # fi
 
-"${POSTGRES_ROOT}/lib/postgresql/pgxs/src/test/regress/pg_regress" "--inputdir=${POSTGRES_ROOT}/lib/regress/" "--bindir=${POSTGRES_ROOT}/bin" "--dlpath=${POSTGRES_ROOT}/lib"  "--schedule=${POSTGRES_ROOT}/lib/regress/cheri_schedule" --no-locale "--outputdir=$OUTPUT_DIR" "--temp-instance=$POSTGRES_INSTANCE" "$@"
+"${POSTGRES_ROOT}/lib/postgresql/pgxs/src/test/regress/pg_regress" "--inputdir=${POSTGRES_ROOT}/lib/postgresql/regress/" "--bindir=${POSTGRES_ROOT}/bin" "--dlpath=${POSTGRES_ROOT}/lib"  "--schedule=${POSTGRES_ROOT}/lib/postgresql/regress/cheri_schedule" --no-locale "--outputdir=$OUTPUT_DIR" "--temp-instance=$POSTGRES_INSTANCE" "$@"
