@@ -52,4 +52,11 @@ mkdir -p "$OUTPUT_DIR/expected"
 # 	${INITDB} -D "${POSTGRES_DATA}" --noclean --nosync --no-locale "$@"
 # fi
 
-"${POSTGRES_ROOT}/lib/postgresql/pgxs/src/test/regress/pg_regress" "--inputdir=${POSTGRES_ROOT}/lib/postgresql/regress/" "--bindir=${POSTGRES_ROOT}/bin" "--dlpath=${POSTGRES_ROOT}/lib"  "--schedule=${POSTGRES_ROOT}/lib/postgresql/regress/cheri_schedule" --no-locale "--outputdir=$OUTPUT_DIR" "--temp-instance=$POSTGRES_INSTANCE" "$@"
+PG_REGRESS=false
+if test -e "${POSTGRES_ROOT}/lib/postgresql/pgxs/src/test/regress/pg_regress"; then
+  PG_REGRESS="${POSTGRES_ROOT}/lib/postgresql/pgxs/src/test/regress/pg_regress"
+elif test -e "${POSTGRES_ROOT}/libcheri/postgresql/pgxs/src/test/regress/pg_regress"
+  PG_REGRESS="${POSTGRES_ROOT}/libcheri/postgresql/pgxs/src/test/regress/pg_regress"
+fi
+
+"${PG_REGRESS}" "--inputdir=${POSTGRES_ROOT}/lib/postgresql/regress/" "--bindir=${POSTGRES_ROOT}/bin" "--dlpath=${POSTGRES_ROOT}/lib"  "--schedule=${POSTGRES_ROOT}/lib/postgresql/regress/cheri_schedule" --no-locale "--outputdir=$OUTPUT_DIR" "--temp-instance=$POSTGRES_INSTANCE" "$@"
