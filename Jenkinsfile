@@ -17,5 +17,6 @@ cheribuildProject(name: 'postgres', extraArgs: '--with-libstatcounters --postgre
                   beforeBuild: 'apt-get install -y libarchive13; ls -la $WORKSPACE',
                   // Postgres tests need the full disk image (they invoke diff -u)
                   minimalTestImage: false, /* targets: ['mips'] */
+                  testTimeout: 4 * 60 * 60, // increase the test timeout to 4 hours (CHERI can take a loooong time)
                   /* sequential: true, // for now run all in order until we have it stable */
                  )
