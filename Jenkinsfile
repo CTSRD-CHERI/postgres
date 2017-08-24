@@ -1,14 +1,15 @@
-stage("Build") {
-  
-    def cleanupScript = '''
+def cleanupScript = '''
 # remove the 600+ useless header files
 rm -rfv tarball/opt/*/include
 # save some space (not sure we need all those massive binaries anyway)
-cheri-unknown-freebsd-strip tarball/opt/*/bin/*
-cheri-unknown-freebsd-strip tarball/opt/*/*/pgxs/src/test/regress/pg_regress
+find tarball/opt/*/bin/* -print0 | xargs -n 1 -0 cheri-unknown-freebsd-strip
+cheri-unknown-freebsd-strip tarball/opt/*/*/postgresql/pgxs/src/test/regress/pg_regress
 '''
-    cheribuildProject(name: 'postgres', extraArgs: '--with-libstatcounters', beforeTarball: cleanupScript,
-                      testScript: 'cd /opt/$CPU/ && sh -xe ./run-postgres-tests.sh',
-                      // Postgres tests can run with the minimal disk image (saves a few minutes of boot time 5 minutes
-                      minimalTestImage: true)
-}
+
+cheribuildProject(name: 'postgres', extraArgs: '--with-libstatcounters', beforeTarball: cleanupScript,
+                  testScript: 'cd /opt/$CPU/ && sh -xe ./run-postgres-tests.sh',
+                  beforeBuild: 'apt-get install -y libarchive13; ls -la $WORKSPACE',
+                  // Postgres tests need the full disk image (they invoke diff -u)
+                  minimalTestImage: false, /* targets: ['mips'] */
+                  sequential: true, // for now run all in order until we have it stable
+                 )
