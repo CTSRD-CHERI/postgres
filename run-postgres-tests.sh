@@ -14,7 +14,12 @@ OUTPUT_DIR="${OUTPUT_ROOT}/postgres-test-cheri/output"
 POSTGRES="${POSTGRES_ROOT}/bin/postgres"
 INITDB="${POSTGRES_ROOT}/bin/initdb"
 PGCTL="${POSTGRES_ROOT}/bin/pg_ctl"
-PGBENCH="${POSTGRES_ROOT}/bin/pgbench"
+PG_REGRESS=false
+if test -e "${POSTGRES_ROOT}/lib/postgresql/pgxs/src/test/regress/pg_regress"; then
+  PG_REGRESS="${POSTGRES_ROOT}/lib/postgresql/pgxs/src/test/regress/pg_regress"
+elif test -e "${POSTGRES_ROOT}/libcheri/postgresql/pgxs/src/test/regress/pg_regress"; then
+  PG_REGRESS="${POSTGRES_ROOT}/libcheri/postgresql/pgxs/src/test/regress/pg_regress"
+fi
 
 if test "`whoami`" = "root"; then
 	if ! pw user show postgres -q > /dev/null; then
@@ -51,12 +56,5 @@ mkdir -p "$OUTPUT_DIR/expected"
 # 	echo "${0}: ${POSTGRES_DATA} does not exist, running initdb..."
 # 	${INITDB} -D "${POSTGRES_DATA}" --noclean --nosync --no-locale "$@"
 # fi
-
-PG_REGRESS=false
-if test -e "${POSTGRES_ROOT}/lib/postgresql/pgxs/src/test/regress/pg_regress"; then
-  PG_REGRESS="${POSTGRES_ROOT}/lib/postgresql/pgxs/src/test/regress/pg_regress"
-elif test -e "${POSTGRES_ROOT}/libcheri/postgresql/pgxs/src/test/regress/pg_regress"
-  PG_REGRESS="${POSTGRES_ROOT}/libcheri/postgresql/pgxs/src/test/regress/pg_regress"
-fi
 
 "${PG_REGRESS}" "--inputdir=${POSTGRES_ROOT}/lib/postgresql/regress/" "--bindir=${POSTGRES_ROOT}/bin" "--dlpath=${POSTGRES_ROOT}/lib"  "--schedule=${POSTGRES_ROOT}/lib/postgresql/regress/cheri_schedule" --no-locale "--outputdir=$OUTPUT_DIR" "--temp-instance=$POSTGRES_INSTANCE" "$@"
