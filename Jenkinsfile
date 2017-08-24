@@ -12,5 +12,5 @@ cheribuildProject(name: 'postgres', extraArgs: '--with-libstatcounters --postgre
                   beforeBuild: 'apt-get install -y libarchive13; ls -la $WORKSPACE',
                   // Postgres tests need the full disk image (they invoke diff -u)
                   minimalTestImage: false, /* targets: ['mips'] */
-                  sequential: true, // for now run all in order until we have it stable
+                  /* sequential: true, // for now run all in order until we have it stable */
                  )
