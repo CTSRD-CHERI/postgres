@@ -2,8 +2,9 @@ def cleanupScript = '''
 # remove the 600+ useless header files
 rm -rfv tarball/opt/*/include
 # save some space (not sure we need all those massive binaries anyway)
-find tarball/opt/*/bin/* -print0 | xargs -n 1 -0 cheri-unknown-freebsd-strip
-cheri-unknown-freebsd-strip tarball/opt/*/*/postgresql/pgxs/src/test/regress/pg_regress
+# cheri-unknown-freebsd
+find tarball/opt/*/bin/* -print0 | xargs -n 1 -0 strip
+strip tarball/opt/*/*/postgresql/pgxs/src/test/regress/pg_regress
 '''
 
 cheribuildProject(name: 'postgres', extraArgs: '--with-libstatcounters --postgres/no-debug-info --postgres/no-assertions', beforeTarball: cleanupScript,
