@@ -1,3 +1,8 @@
+properties([
+    disableConcurrentBuilds(),
+    pipelineTriggers([githubPush()]),
+])
+
 def cleanupScript = '''
 # remove the 600+ useless header files
 rm -rfv tarball/opt/*/include
