@@ -12,7 +12,10 @@ find tarball/opt/*/bin/* -print0 | xargs -n 1 -0 strip
 strip tarball/opt/*/*/postgresql/pgxs/src/test/regress/pg_regress
 '''
 
-cheribuildProject(name: 'postgres', extraArgs: '--with-libstatcounters --postgres/no-debug-info --postgres/no-assertions', beforeTarball: cleanupScript,
+cheribuildProject(name: 'postgres',
+                  // extraArgs: '--with-libstatcounters --postgres/no-debug-info --postgres/no-assertions',
+                  extraArgs: '--with-libstatcounters --postgres/no-debug-info --postgres/assertions',
+                  beforeTarball: cleanupScript,
                   testScript: 'cd /opt/$CPU/ && sh -xe ./run-postgres-tests.sh',
                   beforeBuild: 'apt-get install -y libarchive13; ls -la $WORKSPACE',
                   // Postgres tests need the full disk image (they invoke diff -u)
