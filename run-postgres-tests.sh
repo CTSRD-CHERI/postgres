@@ -15,12 +15,16 @@ POSTGRES="${POSTGRES_ROOT}/bin/postgres"
 INITDB="${POSTGRES_ROOT}/bin/initdb"
 PGCTL="${POSTGRES_ROOT}/bin/pg_ctl"
 PG_LIBDIR=/this/path/does/not/exist
-if test -e "${POSTGRES_ROOT}/libcheri/postgresql"; then
+if test -e "${POSTGRES_ROOT}/libcheri/postgresql/pgxs"; then
+  PG_LIBDIR="${POSTGRES_ROOT}/libcheri/postgresql"
+elif test -e "${POSTGRES_ROOT}/lib/postgresql/pgxs"; then
+  PG_LIBDIR="${POSTGRES_ROOT}/lib/postgresql"
+elif test -e "${POSTGRES_ROOT}/libcheri/pgxs"; then
   PG_LIBDIR="${POSTGRES_ROOT}/libcheri"
-elif test -e "${POSTGRES_ROOT}/lib/postgresql"; then
+elif test -e "${POSTGRES_ROOT}/lib/pgxs"; then
   PG_LIBDIR="${POSTGRES_ROOT}/lib"
 fi
-PG_REGRESS="${PG_LIBDIR}/postgresql/pgxs/src/test/regress/pg_regress"
+PG_REGRESS="${PG_LIBDIR}/pgxs/src/test/regress/pg_regress"
 
 
 if test "`whoami`" = "root"; then
