@@ -1109,7 +1109,7 @@ extern int	fdatasync(int fildes);
 #endif
 
 #ifdef __CHERI_PURE_CAPABILITY__
-typedef	pg_attribute_memory_address() __uintcap_t	pg_vaddr_t;
+typedef	pg_attribute_memory_address() uint64_t		pg_vaddr_t;
 #else
 typedef	pg_attribute_memory_address() uintptr_t		pg_vaddr_t;
 #endif
