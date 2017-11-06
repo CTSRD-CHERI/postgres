@@ -1,6 +1,6 @@
 #!/bin/sh -xe
 
-POSTGRES_ROOT="/postgres/cheri"
+POSTGRES_ROOT="$(realpath .)"
 POSTGRES_DATA="/tmp/postgres/postgres-test-cheri/instance/data"
 POSTGRES="${POSTGRES_ROOT}/bin/postgres"
 INITDB="${POSTGRES_ROOT}/bin/initdb"
@@ -48,7 +48,15 @@ ${PGCTL} start -w -D "${POSTGRES_DATA}"
 
 echo "${0}: running benchmark ${NTIMES} times..."
 ${PGBENCH} -i postgres
-for i in `jot ${NTIMES}`; do
+if command -v jot 2>/dev/null ; then
+	BENCHCOUNT="$(jot ${NTIMES})"
+elif command -v seq 2>/dev/null ; then
+	BENCHCOUNT="$(seq ${NTIMES})"
+else
+	BENCHCOUNT="1 2 3 4 5 6 7 8 9 10"
+fi
+
+for i in $BENCHCOUNT; do
 	${PGBENCH} -c 2 -T 180 postgres 2>&1 | tee /tmp/pgbench-results.txt
 done
 
