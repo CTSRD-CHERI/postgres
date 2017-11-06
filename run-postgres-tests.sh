@@ -63,4 +63,4 @@ mkdir -p "$OUTPUT_DIR/expected"
 # 	${INITDB} -D "${POSTGRES_DATA}" --noclean --nosync --no-locale "$@"
 # fi
 
-"${PG_REGRESS}" "--inputdir=${PG_LIBDIR}/postgresql/regress/" "--bindir=${POSTGRES_ROOT}/bin" "--dlpath=${PG_LIBDIR}"  "--schedule=${PG_LIBDIR}/postgresql/regress/cheri_schedule" --no-locale "--outputdir=$OUTPUT_DIR" "--temp-instance=$POSTGRES_INSTANCE" "$@" || echo "Some tests failed!"
+"${PG_REGRESS}" "--inputdir=${PG_LIBDIR}/regress/" "--bindir=${POSTGRES_ROOT}/bin" "--dlpath=${PG_LIBDIR}"  "--schedule=${PG_LIBDIR}/regress/cheri_schedule" --no-locale "--outputdir=$OUTPUT_DIR" "--temp-instance=$POSTGRES_INSTANCE" "$@" || echo "Some tests failed!"
