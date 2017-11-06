@@ -20,11 +20,11 @@ SHLIB_PREREQS = submake-libpq
 PGFILEDESC = "libpqwalreceiver - receive WAL during streaming replication"
 NAME = libpqwalreceiver
 
-all: all-static-lib
+all: all-shared-lib
 
 include $(top_srcdir)/src/Makefile.shlib
 
-install: all installdirs install-lib-static
+install: all installdirs install-lib
 
 installdirs: installdirs-lib
 
