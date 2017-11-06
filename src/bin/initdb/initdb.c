@@ -3333,7 +3333,7 @@ initialize_data_directory(void)
 
 	setup_collation(cmdfd);
 
-#if 0
+#ifndef DISABLE_LOADABLE_MODULES
 	// Those require loadable modules, won't work when statically linked.
 	// Fails like this:
 	// FATAL:  could not access file "$libdir/ascii_and_mic": No such file or directory
@@ -3346,7 +3346,7 @@ initialize_data_directory(void)
 
 	setup_schema(cmdfd);
 
-#if 0
+#ifndef DISABLE_LOADABLE_MODULES
 	// Requires loadable modules, fails like this:
 	// FATAL:  could not access file "$libdir/plpgsql": No such file or directory
 	// STATEMENT:  CREATE EXTENSION plpgsql;
