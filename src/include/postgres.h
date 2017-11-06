@@ -387,7 +387,7 @@ typedef Datum *DatumPtr;
  * Not sure this makes any difference
  */
 #define GET_8_BYTES(datum)	((vaddr_t) (datum))
-#elif SIZEOF_DATUM == 8
+#elif SIZEOF_DATUM >= 8
 #define GET_8_BYTES(datum)	((Datum) (datum))
 #endif
 #define SET_1_BYTE(value)	(((Datum) (value)) & (uintptr_t)PG_UINT8_MAX)

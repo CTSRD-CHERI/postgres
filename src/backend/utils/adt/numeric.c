@@ -2110,8 +2110,8 @@ Datum
 hash_numeric(PG_FUNCTION_ARGS)
 {
 	Numeric		key = PG_GETARG_NUMERIC(0);
-	Datum		digit_hash;
-	Datum		result;
+	size_t		digit_hash;
+	size_t		result;
 	int			weight;
 	int			start_offset;
 	int			end_offset;

@@ -286,7 +286,7 @@ TypeCreate(Oid newTypeOid,
 								alignment, internalSize)));
 		}
 #if SIZEOF_DATUM >= 8
-		else if (internalSize == (int16) sizeof(int64))
+		else if (internalSize == (int16) sizeof(Datum))
 		{
 			if (alignment != 'd')
 				ereport(ERROR,
