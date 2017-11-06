@@ -11,6 +11,8 @@ POSTGRES_INSTANCE="${OUTPUT_ROOT}/postgres-test-cheri/instance"
 POSTGRES_DATA="${POSTGRES_INSTANCE}/data"
 OUTPUT_DIR="${OUTPUT_ROOT}/postgres-test-cheri/output"
 
+SCHEDULE_NAME=${SCHEDULE_NAME:-cheri_schedule}
+
 POSTGRES="${POSTGRES_ROOT}/bin/postgres"
 INITDB="${POSTGRES_ROOT}/bin/initdb"
 PGCTL="${POSTGRES_ROOT}/bin/pg_ctl"
@@ -63,4 +65,8 @@ mkdir -p "$OUTPUT_DIR/expected"
 # 	${INITDB} -D "${POSTGRES_DATA}" --noclean --nosync --no-locale "$@"
 # fi
 
-"${PG_REGRESS}" "--inputdir=${PG_LIBDIR}/regress/" "--bindir=${POSTGRES_ROOT}/bin" "--dlpath=${PG_LIBDIR}"  "--schedule=${PG_LIBDIR}/regress/cheri_schedule" --no-locale "--outputdir=$OUTPUT_DIR" "--temp-instance=$POSTGRES_INSTANCE" "$@" || echo "Some tests failed!"
+rm -rf "$OUTPUT_DIR/testtablespace"
+mkdir -p "$OUTPUT_DIR/testtablespace"
+LD_LIBRARY_PATH=${PG_LIBDIR}; export LD_LIBRARY_PATH
+PATH="${POSTGRES_ROOT}/bin:$PATH"; export PATH
+"${PG_REGRESS}" "--inputdir=${PG_LIBDIR}/regress/" "--bindir=${POSTGRES_ROOT}/bin" "--dlpath=${PG_LIBDIR}"  "--schedule=${PG_LIBDIR}/regress/${SCHEDULE_NAME}" --no-locale "--outputdir=$OUTPUT_DIR" "--temp-instance=$POSTGRES_INSTANCE" "$@" || echo "Some tests failed!"
