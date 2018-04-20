@@ -3060,7 +3060,7 @@ XLogFileInit(XLogSegNo logsegno, bool *use_existent, bool use_lock)
 	 * Note: ensure the buffer is reasonably well-aligned; this may save a few
 	 * cycles transferring data to the kernel.
 	 */
-	zbuffer = (char *) MAXALIGN(zbuffer_raw);
+	zbuffer = (char *) MAXALIGN(&zbuffer_raw[0]); // FIXME: https://github.com/CTSRD-CHERI/clang/issues/196
 	memset(zbuffer, 0, XLOG_BLCKSZ);
 	for (nbytes = 0; nbytes < XLogSegSize; nbytes += XLOG_BLCKSZ)
 	{

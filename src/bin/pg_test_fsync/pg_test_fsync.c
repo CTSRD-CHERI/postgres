@@ -207,7 +207,7 @@ prepare_buf(void)
 	for (ops = 0; ops < XLOG_SEG_SIZE; ops++)
 		full_buf[ops] = random();
 
-	buf = (char *) TYPEALIGN(XLOG_BLCKSZ, full_buf);
+	buf = (char *) TYPEALIGN(XLOG_BLCKSZ, &full_buf[0]); // https://github.com/CTSRD-CHERI/clang/issues/196
 }
 
 static void
