@@ -53,6 +53,7 @@
 #define MALLOC(n)		malloc(n)
 #define FREE(p)			free(VS(p))
 #define REALLOC(p,n)	realloc(VS(p),n)
+#undef assert
 #define assert(x)		Assert(x)
 
 /* internal character type and related */
