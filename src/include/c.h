@@ -842,6 +842,7 @@ typedef NameData *Name;
 /* Get a bit mask of the bits set in non-long aligned addresses */
 #define LONG_ALIGN_MASK (sizeof(long) - 1)
 
+#define MY_COMPILER_IS_REALLY_STUPID
 #ifdef MY_COMPILER_IS_REALLY_STUPID
 
 /*
@@ -862,7 +863,7 @@ typedef NameData *Name;
 		int		_val = (val); \
 		Size	_len = (len); \
 \
-		if ((((uintptr_t) _vstart) & (uintptr_t)LONG_ALIGN_MASK) == 0 && \
+		if ((((vaddr_t) _vstart) & (vaddr_t)LONG_ALIGN_MASK) == 0 && \
 			(_len & LONG_ALIGN_MASK) == 0 && \
 			_val == 0 && \
 			_len <= MEMSET_LOOP_LIMIT && \
@@ -906,11 +907,13 @@ typedef NameData *Name;
 		else \
 			memset(_start, _val, _len); \
 	} while (0)
-#endif /* MY_COMPILER_IS_REALLY_STUPID */
+#else
 /* Recent clang is smart enough to inline small memset and uses appropriate
  * strides if the value is known to be aligned */
 #define MemSet(start, val, len) memset(start, val, len)
 #define MemSetAligned(start, val, len) memset(start, val, len)
+#endif /* MY_COMPILER_IS_REALLY_STUPID */
+
 
 /*
  * MemSetTest/MemSetLoop are a variant version that allow all the tests in
