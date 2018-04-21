@@ -571,7 +571,7 @@ typedef NameData *Name;
  */
 
 #define TYPEALIGN(ALIGNVAL,LEN)  \
-	__builtin_align_up((uintptr_t)(LEN), ALIGNVAL)
+	(__builtin_align_up((LEN), ALIGNVAL))
 #if 0
 	(((uintptr_t) (LEN) + ((ALIGNVAL) - 1)) & ~((uintptr_t) ((ALIGNVAL) - 1)))
 #endif
@@ -586,7 +586,7 @@ typedef NameData *Name;
 #define CACHELINEALIGN(LEN)		TYPEALIGN(PG_CACHE_LINE_SIZE, (LEN))
 
 #define TYPEALIGN_DOWN(ALIGNVAL,LEN)  \
-	__builtin_align_down((uintptr_t)(LEN), ALIGNVAL)
+	(__builtin_align_down((LEN), ALIGNVAL))
 #if 0
 	(((uintptr_t) (LEN)) & ~((uintptr_t) ((ALIGNVAL) - 1)))
 #endif
