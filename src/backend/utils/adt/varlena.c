@@ -2287,8 +2287,8 @@ varstr_abbrev_convert(Datum original, SortSupport ssup)
 		uint32		lohalf,
 					hihalf;
 
-		lohalf = (uint32) res;
-		hihalf = (uint32) (res >> 32);
+		lohalf = (uint32) (vaddr_t)res;
+		hihalf = (uint32) ((vaddr_t)res >> 32);
 		hash = DatumGetUInt32(hash_uint32(lohalf ^ hihalf));
 	}
 #else							/* SIZEOF_DATUM != 8 */
