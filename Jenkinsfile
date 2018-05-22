@@ -1,6 +1,13 @@
-properties([
-    disableConcurrentBuilds(),
-    pipelineTriggers([githubPush()]),
+@Library('ctsrd-jenkins-scripts') _
+
+properties([disableConcurrentBuilds(),
+            compressBuildLog(),
+            disableResume(),
+            [$class: 'GithubProjectProperty', displayName: '', projectUrlStr: 'https://github.com/CTSRD-CHERI/llvm/'],
+            [$class: 'CopyArtifactPermissionProperty', projectNames: '*'],
+            [$class: 'JobPropertyImpl', throttle: [count: 2, durationName: 'hour', userBoost: true]],
+            durabilityHint('PERFORMANCE_OPTIMIZED'),
+            pipelineTriggers([githubPush()])
 ])
 
 def cleanupScript = '''
@@ -12,14 +19,17 @@ find tarball/opt/*/bin/* -print0 | xargs -n 1 -0 strip
 strip tarball/opt/*/*/postgresql/pgxs/src/test/regress/pg_regress
 '''
 
-cheribuildProject(name: 'postgres',
-                  // extraArgs: '--with-libstatcounters --postgres/no-debug-info --postgres/no-assertions',
-                  extraArgs: '--with-libstatcounters --postgres/no-debug-info --postgres/assertions',
-                  beforeTarball: cleanupScript,
-                  testScript: 'cd /opt/$CPU/ && sh -xe ./run-postgres-tests.sh',
-                  beforeBuild: 'apt-get install -y libarchive13; ls -la $WORKSPACE',
-                  // Postgres tests need the full disk image (they invoke diff -u)
-                  minimalTestImage: false, /* targets: ['mips'] */
-                  testTimeout: 4 * 60 * 60, // increase the test timeout to 4 hours (CHERI can take a loooong time)
-                  /* sequential: true, // for now run all in order until we have it stable */
-                 )
+
+for (i in ["mips" /*, "cheri128", "cheri256" */]) {
+    String cpu = "${i}" // work around stupid groovy lambda captures
+    cheribuildProject(target: 'postgres', cpu: cpu,
+            // extraArgs: '--with-libstatcounters --postgres/no-debug-info --postgres/no-assertions',
+            extraArgs: '--with-libstatcounters --postgres/no-debug-info --postgres/assertions',
+            beforeTarball: cleanupScript,
+            testScript: 'cd /opt/$CPU/ && sh -xe ./run-postgres-tests.sh',
+            beforeBuild: 'apt-get install -y libarchive13; ls -la $WORKSPACE',
+            // Postgres tests need the full disk image (they invoke diff -u)
+            minimalTestImage: false,
+            testTimeout: 4 * 60 * 60, // increase the test timeout to 4 hours (CHERI can take a loooong time)
+            /* sequential: true, // for now run all in order until we have it stable */)
+}
