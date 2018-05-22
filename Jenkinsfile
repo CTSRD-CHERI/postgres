@@ -15,8 +15,8 @@ def cleanupScript = '''
 rm -rfv tarball/opt/*/include
 # save some space (not sure we need all those massive binaries anyway)
 # cheri-unknown-freebsd
-find tarball/opt/*/bin/* -print0 | xargs -n 1 -0 $WORKSPACE/cherisdk/bin/strip || true
-$WORKSPACE/cherisdk/bin/strip tarball/opt/*/*/postgresql/pgxs/src/test/regress/pg_regress || true
+find tarball/opt/*/bin/* -print0 | xargs -n 1 -0 $WORKSPACE/cherisdk/bin/llvm-objcopy --strip-all
+$WORKSPACE/cherisdk/bin/llvm-objcopy --strip-all tarball/opt/*/*/postgresql/pgxs/src/test/regress/pg_regress
 '''
 
 
