@@ -15,8 +15,8 @@ def cleanupScript = '''
 rm -rfv tarball/opt/*/include
 # save some space (not sure we need all those massive binaries anyway)
 # cheri-unknown-freebsd
-find tarball/opt/*/bin/* -print0 | xargs -n 1 -0 $WORKSPACE/cherisdk/bin/strip
-$WORKSPACE/cherisdk/bin/strip tarball/opt/*/*/postgresql/pgxs/src/test/regress/pg_regress
+find tarball/opt/*/bin/* -print0 | xargs -n 1 -0 $WORKSPACE/cherisdk/bin/strip || true
+$WORKSPACE/cherisdk/bin/strip tarball/opt/*/*/postgresql/pgxs/src/test/regress/pg_regress || true
 '''
 
 
@@ -26,6 +26,7 @@ for (i in ["mips" /*, "cheri128", "cheri256" */]) {
             // extraArgs: '--with-libstatcounters --postgres/no-debug-info --postgres/no-assertions',
             extraArgs: '--with-libstatcounters --postgres/no-debug-info --postgres/assertions --postgres/linkage=dynamic',
             beforeTarball: cleanupScript,
+            skipArchiving: true,
             testScript: 'cd /opt/$CPU/ && sh -xe ./run-postgres-tests.sh',
             beforeBuild: 'ls -la $WORKSPACE',
             // Postgres tests need the full disk image (they invoke diff -u)
