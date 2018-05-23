@@ -74,7 +74,7 @@ if "${PG_REGRESS}" "--inputdir=${PG_LIBDIR}/regress/" "--bindir=${POSTGRES_ROOT}
 then
 	echo "TESTS SUCCCEEDED"
 else
-	echo "TESTS FAILED"
+	echo "Got test failures, reading initdb log: $OUTPUT_DIR/log/initdb.log"
 	cat "$OUTPUT_DIR/log/initdb.log"
 	false
 fi
