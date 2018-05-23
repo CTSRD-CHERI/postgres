@@ -70,4 +70,4 @@ rm -rf "./testtablespace"
 mkdir -p "./testtablespace"
 LD_LIBRARY_PATH=${PG_LIBDIR}; export LD_LIBRARY_PATH
 PATH="${POSTGRES_ROOT}/bin:$PATH"; export PATH
-"${PG_REGRESS}" "--inputdir=${PG_LIBDIR}/regress/" "--bindir=${POSTGRES_ROOT}/bin" "--dlpath=${PG_LIBDIR}"  "--schedule=${PG_LIBDIR}/regress/${SCHEDULE_NAME}" "--outputdir=$OUTPUT_DIR" "--temp-instance=$POSTGRES_INSTANCE" "$@" || echo "Some tests failed!"
+"${PG_REGRESS}" "--inputdir=${PG_LIBDIR}/regress/" "--bindir=${POSTGRES_ROOT}/bin" "--dlpath=${PG_LIBDIR}"  "--schedule=${PG_LIBDIR}/regress/${SCHEDULE_NAME}" "--outputdir=$OUTPUT_DIR" "--temp-instance=$POSTGRES_INSTANCE" "$@"
