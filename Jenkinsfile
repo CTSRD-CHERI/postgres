@@ -24,7 +24,7 @@ for (i in ["mips" /*, "cheri128", "cheri256" */]) {
     String cpu = "${i}" // work around stupid groovy lambda captures
     cheribuildProject(target: 'postgres', cpu: cpu,
             // extraArgs: '--with-libstatcounters --postgres/no-debug-info --postgres/no-assertions',
-            extraArgs: '--with-libstatcounters --postgres/no-debug-info --postgres/assertions --postgres/linkage=dynamic',
+            extraArgs: '--no-with-libstatcounters --postgres/no-debug-info --postgres/assertions --postgres/linkage=dynamic',
             beforeTarball: cleanupScript,
             skipArchiving: true,
             testScript: 'cd /opt/$CPU/ && sh -xe ./run-postgres-tests.sh',
