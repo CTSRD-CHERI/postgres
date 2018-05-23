@@ -12,7 +12,7 @@ properties([disableConcurrentBuilds(),
 
 def cleanupScript = '''
 # remove the 600+ useless header files
-rm -rfv tarball/opt/*/include
+rm -rf tarball/opt/*/include
 # save some space (not sure we need all those massive binaries anyway)
 # cheri-unknown-freebsd
 find tarball/opt/*/bin/* -print0 | xargs -n 1 -0 $WORKSPACE/cherisdk/bin/llvm-objcopy --strip-all
@@ -29,6 +29,7 @@ for (i in ["mips" /*, "cheri128", "cheri256" */]) {
             skipArchiving: true,
             testScript: 'cd /opt/$CPU/ && sh -xe ./run-postgres-tests.sh',
             beforeBuild: 'ls -la $WORKSPACE',
+            noIncrementalBuild: true,
             // Postgres tests need the full disk image (they invoke diff -u)
             minimalTestImage: false,
             testTimeout: 4 * 60 * 60, // increase the test timeout to 4 hours (CHERI can take a loooong time)
