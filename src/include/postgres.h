@@ -377,24 +377,24 @@ typedef uintptr_t Datum;
 
 typedef Datum *DatumPtr;
 
-#define GET_1_BYTE(datum)	(((vaddr_t) (datum)) & (vaddr_t)PG_UINT8_MAX)
-#define GET_2_BYTES(datum)	(((vaddr_t) (datum)) & (vaddr_t)PG_UINT16_MAX)
-#define GET_4_BYTES(datum)	(((vaddr_t) (datum)) & (vaddr_t)PG_UINT32_MAX)
+#define GET_1_BYTE(datum)	(((pg_vaddr_t) (datum)) & (pg_vaddr_t)PG_UINT8_MAX)
+#define GET_2_BYTES(datum)	(((pg_vaddr_t) (datum)) & (pg_vaddr_t)PG_UINT16_MAX)
+#define GET_4_BYTES(datum)	(((pg_vaddr_t) (datum)) & (pg_vaddr_t)PG_UINT32_MAX)
 #ifdef __CHERI_PURE_CAPABILITY__
 /*
  * XXXAR: make sure that we actually return a 64 bit quanitity
  * This makes sure that there is definitely no tag on the resulting value
  * Not sure this makes any difference
  */
-#define GET_8_BYTES(datum)	((vaddr_t) (datum))
+#define GET_8_BYTES(datum)	((pg_vaddr_t) (datum))
 #elif SIZEOF_DATUM >= 8
-#define GET_8_BYTES(datum)	((vaddr_t) (datum))
+#define GET_8_BYTES(datum)	((pg_vaddr_t) (datum))
 #endif
-#define SET_1_BYTE(value)	(((vaddr_t) (value)) & (vaddr_t)PG_UINT8_MAX)
-#define SET_2_BYTES(value)	(((vaddr_t) (value)) & (vaddr_t)PG_UINT16_MAX)
-#define SET_4_BYTES(value)	(((vaddr_t) (value)) & (vaddr_t)PG_UINT32_MAX)
+#define SET_1_BYTE(value)	(((pg_vaddr_t) (value)) & (pg_vaddr_t)PG_UINT8_MAX)
+#define SET_2_BYTES(value)	(((pg_vaddr_t) (value)) & (pg_vaddr_t)PG_UINT16_MAX)
+#define SET_4_BYTES(value)	(((pg_vaddr_t) (value)) & (pg_vaddr_t)PG_UINT32_MAX)
 #if SIZEOF_DATUM >= 8
-#define SET_8_BYTES(value)	((vaddr_t) (value))
+#define SET_8_BYTES(value)	((pg_vaddr_t) (value))
 #endif
 
 /*

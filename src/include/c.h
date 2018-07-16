@@ -863,7 +863,7 @@ typedef NameData *Name;
 		int		_val = (val); \
 		Size	_len = (len); \
 \
-		if ((((vaddr_t) _vstart) & (vaddr_t)LONG_ALIGN_MASK) == 0 && \
+		if ((((pg_vaddr_t) _vstart) & (pg_vaddr_t)LONG_ALIGN_MASK) == 0 && \
 			(_len & LONG_ALIGN_MASK) == 0 && \
 			_val == 0 && \
 			_len <= MEMSET_LOOP_LIMIT && \
