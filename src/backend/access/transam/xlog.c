@@ -453,11 +453,21 @@ typedef struct
  * cross cache line boundaries. (Of course, we have to also ensure that the
  * array start address is suitably aligned.)
  */
+
+/* With lock debugging on cheri256 the WalInsertLock is bigger than 64 */
+#if defined(LOCK_DEBUG) && defined(__CHERI_PURE_CAPABILITY__) && _MIPS_SZCAP == 256
+#define WAL_PADDED_SIZE (2 * PG_CACHE_LINE_SIZE)
+#else
+#define WAL_PADDED_SIZE PG_CACHE_LINE_SIZE
+#endif
 typedef union WALInsertLockPadded
 {
 	WALInsertLock l;
-	char		pad[PG_CACHE_LINE_SIZE];
+	char		pad[WAL_PADDED_SIZE];
 } WALInsertLockPadded;
+_Static_assert(sizeof(WALInsertLockPadded) == WAL_PADDED_SIZE, "");
+
+
 
 /*
  * State of an exclusive backup, necessary to control concurrent activities
