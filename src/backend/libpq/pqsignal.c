@@ -84,6 +84,11 @@ pqinitmask(void)
 	sigdelset(&StartupBlockSig, SIGCONT);
 #endif
 
+#ifdef SIGPROT
+	sigdelset(&BlockSig, SIGPROT);
+	sigdelset(&StartupBlockSig, SIGPROT);
+#endif
+
 /* Signals unique to startup */
 #ifdef SIGQUIT
 	sigdelset(&StartupBlockSig, SIGQUIT);
