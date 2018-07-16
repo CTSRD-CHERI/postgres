@@ -4743,7 +4743,12 @@ XLOGShmemInit(void)
 
 
 	/* WAL insertion locks. Ensure they're aligned to the full padded size */
+#if __has_builtin(__builtin_align_up)
 	allocptr = __builtin_align_up(allocptr, sizeof(WALInsertLockPadded));
+#else
+	allocptr += sizeof(WALInsertLockPadded) -
+		((uintptr_t) allocptr) %sizeof(WALInsertLockPadded);
+#endif
 	WALInsertLocks = XLogCtl->Insert.WALInsertLocks =
 		(WALInsertLockPadded *) allocptr;
 	allocptr += sizeof(WALInsertLockPadded) * NUM_XLOGINSERT_LOCKS;

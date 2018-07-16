@@ -430,7 +430,11 @@ CreateLWLocks(void)
 		ptr += sizeof(int);
 
 		/* Ensure desired alignment of LWLock array */
+#if __has_builtin(__builtin_align_up)
 		ptr = __builtin_align_up(ptr, LWLOCK_PADDED_SIZE);
+#else
+		ptr += LWLOCK_PADDED_SIZE - ((uintptr_t) ptr) % LWLOCK_PADDED_SIZE;
+#endif
 
 		MainLWLockArray = (LWLockPadded *) ptr;
 
