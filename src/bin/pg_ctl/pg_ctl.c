@@ -89,7 +89,11 @@ static char *register_servicename = "PostgreSQL";		/* FIXME: + version ID? */
 static char *register_username = NULL;
 static char *register_password = NULL;
 static char *argv0 = NULL;
+#ifdef __CHERI__
+static bool allow_core_files = true;
+#else
 static bool allow_core_files = false;
+#endif
 static time_t start_time;
 
 static char postopts_file[MAXPGPATH];
