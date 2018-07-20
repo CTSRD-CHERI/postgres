@@ -498,7 +498,7 @@ mcelem_array_selec(ArrayType *array, TypeCacheEntry *typentry,
 
 	/* Sort extracted elements using their default comparison function. */
 	qsort_arg(elem_values, nonnull_nitems, sizeof(Datum),
-			  element_compare, cmpfunc);
+			  QSORT_ARG_COMPARATOR_PTR(element_compare), cmpfunc);
 
 	/* Separate cases according to operator */
 	if (operator == OID_ARRAY_CONTAINS_OP || operator == OID_ARRAY_OVERLAP_OP)
@@ -608,7 +608,7 @@ mcelem_array_contain_overlap_selec(Datum *mcelem, int nmcelem,
 
 		/* Ignore any duplicates in the array data. */
 		if (i > 0 &&
-			element_compare(&array_data[i - 1], &array_data[i], cmpfunc) == 0)
+			CALL_QSORT_ARG_COMPARATOR(element_compare, &array_data[i - 1], &array_data[i], cmpfunc) == 0)
 			continue;
 
 		/* Find the smallest MCELEM >= this array item. */
@@ -621,7 +621,7 @@ mcelem_array_contain_overlap_selec(Datum *mcelem, int nmcelem,
 		{
 			while (mcelem_index < nmcelem)
 			{
-				int			cmp = element_compare(&mcelem[mcelem_index],
+				int			cmp = CALL_QSORT_ARG_COMPARATOR(element_compare, &mcelem[mcelem_index],
 												  &array_data[i],
 												  cmpfunc);
 
@@ -787,7 +787,7 @@ mcelem_array_contained_selec(Datum *mcelem, int nmcelem,
 
 		/* Ignore any duplicates in the array data. */
 		if (i > 0 &&
-			element_compare(&array_data[i - 1], &array_data[i], cmpfunc) == 0)
+			CALL_QSORT_ARG_COMPARATOR(element_compare, &array_data[i - 1], &array_data[i], cmpfunc) == 0)
 			continue;
 
 		/*
@@ -797,7 +797,7 @@ mcelem_array_contained_selec(Datum *mcelem, int nmcelem,
 		 */
 		while (mcelem_index < nmcelem)
 		{
-			int			cmp = element_compare(&mcelem[mcelem_index],
+			int			cmp = CALL_QSORT_ARG_COMPARATOR(element_compare, &mcelem[mcelem_index],
 											  &array_data[i],
 											  cmpfunc);
 
@@ -1162,7 +1162,7 @@ find_next_mcelem(Datum *mcelem, int nmcelem, Datum value, int *index,
 	while (l <= r)
 	{
 		i = (l + r) / 2;
-		res = element_compare(&mcelem[i], &value, cmpfunc);
+		res = CALL_QSORT_ARG_COMPARATOR(element_compare, &mcelem[i], &value, cmpfunc);
 		if (res == 0)
 		{
 			*index = i;

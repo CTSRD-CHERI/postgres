@@ -1016,7 +1016,7 @@ range_gist_single_sorting_split(TypeCacheEntry *typcache,
 	}
 
 	qsort_arg(sortItems, maxoff, sizeof(SingleBoundSortItem),
-			  single_bound_cmp, typcache);
+			  QSORT_ARG_COMPARATOR_PTR(single_bound_cmp), typcache);
 
 	split_idx = maxoff / 2;
 
@@ -1118,9 +1118,9 @@ range_gist_double_sorting_split(TypeCacheEntry *typcache,
 	 */
 	memcpy(by_upper, by_lower, nentries * sizeof(NonEmptyRange));
 	qsort_arg(by_lower, nentries, sizeof(NonEmptyRange),
-			  interval_cmp_lower, typcache);
+			  QSORT_ARG_COMPARATOR_PTR(interval_cmp_lower), typcache);
 	qsort_arg(by_upper, nentries, sizeof(NonEmptyRange),
-			  interval_cmp_upper, typcache);
+			  QSORT_ARG_COMPARATOR_PTR(interval_cmp_upper), typcache);
 
 	/*----------
 	 * The goal is to form a left and right range, so that every entry

@@ -102,7 +102,7 @@ uniqueentry(WordEntryIN *a, int l, char *buf, int *outbuflen)
 	Assert(l >= 1);
 
 	if (l > 1)
-		qsort_arg((void *) a, l, sizeof(WordEntryIN), compareentry,
+		qsort_arg((void *) a, l, sizeof(WordEntryIN), QSORT_ARG_COMPARATOR_PTR(compareentry),
 				  (void *) buf);
 
 	buflen = 0;
@@ -167,7 +167,7 @@ uniqueentry(WordEntryIN *a, int l, char *buf, int *outbuflen)
 static int
 WordEntryCMP(WordEntry *a, WordEntry *b, char *buf)
 {
-	return compareentry(a, b, buf);
+	return CALL_QSORT_ARG_COMPARATOR(compareentry, a, b, buf);
 }
 
 
@@ -542,7 +542,7 @@ tsvectorrecv(PG_FUNCTION_ARGS)
 
 	if (needSort)
 		qsort_arg((void *) ARRPTR(vec), vec->size, sizeof(WordEntry),
-				  compareentry, (void *) STRPTR(vec));
+				  QSORT_ARG_COMPARATOR_PTR(compareentry), (void *) STRPTR(vec));
 
 	PG_RETURN_TSVECTOR(vec);
 }

@@ -488,7 +488,7 @@ startScanKey(GinState *ginstate, GinScanOpaque so, GinScanKey key)
 		for (i = 0; i < key->nentries; i++)
 			entryIndexes[i] = i;
 		qsort_arg(entryIndexes, key->nentries, sizeof(int),
-				  entryIndexByFrequencyCmp, key);
+				  QSORT_ARG_COMPARATOR_PTR(entryIndexByFrequencyCmp), key);
 
 		for (i = 0; i < key->nentries - 1; i++)
 		{

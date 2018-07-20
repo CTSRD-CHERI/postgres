@@ -217,9 +217,9 @@ compute_range_stats(VacAttrStats *stats, AnalyzeAttrFetchFunc fetchfunc,
 		{
 			/* Sort bound values */
 			qsort_arg(lowers, non_empty_cnt, sizeof(RangeBound),
-					  range_bound_qsort_cmp, typcache);
+					  QSORT_ARG_COMPARATOR_PTR(range_bound_qsort_cmp), typcache);
 			qsort_arg(uppers, non_empty_cnt, sizeof(RangeBound),
-					  range_bound_qsort_cmp, typcache);
+					  QSORT_ARG_COMPARATOR_PTR(range_bound_qsort_cmp), typcache);
 
 			num_hist = non_empty_cnt;
 			if (num_hist > num_bins)

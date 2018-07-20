@@ -450,8 +450,13 @@ qsort_arg(void *a, size_t n, size_t es, qsort_arg_comparator cmp, void *arg)
 {
 	qsort_r(a, n, es, arg, cmp);
 }
+// NOTE: FreeBSD and Linux qsort_r are completely incompatible due to different argument order
+// Generating a non-obvious function name avoids stupid errors like in tsrank.c where the function is then called wrongly
+
 #define QSORT_ARG_COMPARATOR_FUNC(name, a, b) \
-	int name(void *arg, const void *a, const void *b)
+	int _##name##_freebsd_cmp(void *arg, const void *a, const void *b)
+#define QSORT_ARG_COMPARATOR_PTR(name) &_##name##_freebsd_cmp
+#define CALL_QSORT_ARG_COMPARATOR(name, a, b, arg) _##name##_freebsd_cmp(arg, a, b)
 #else
 /* #warning "Using postgres qsort" */
 #define qsort(a,b,c,d) pg_qsort(a,b,c,d)
@@ -459,7 +464,9 @@ typedef int (*qsort_arg_comparator) (const void *a, const void *b, void *arg);
 extern void qsort_arg(void *base, size_t nel, size_t elsize,
 		  qsort_arg_comparator cmp, void *arg);
 #define QSORT_ARG_COMPARATOR_FUNC(name, a, b) \
-	int name(const void *a, const void *b, void* arg)
+	int _##name##_postgres_cmp(const void *a, const void *b, void* arg)
+#define QSORT_ARG_COMPARATOR_PTR(name) &_##name##_postgres_cmp
+#define CALL_QSORT_ARG_COMPARATOR(name, a, b, arg) _##name##_postgres_cmp(a, b, arg)
 #endif
 extern int	pg_qsort_strcmp(const void *a, const void *b);
 

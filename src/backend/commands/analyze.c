@@ -2347,7 +2347,7 @@ compute_scalar_stats(VacAttrStatsP stats,
 		cxt.ssup = &ssup;
 		cxt.tupnoLink = tupnoLink;
 		qsort_arg((void *) values, values_cnt, sizeof(ScalarItem),
-				  compare_scalars, (void *) &cxt);
+				  QSORT_ARG_COMPARATOR_PTR(compare_scalars), (void *) &cxt);
 
 		/*
 		 * Now scan the values in order, find the most common ones, and also

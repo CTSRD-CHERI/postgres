@@ -175,7 +175,7 @@ SortAndUniqItems(TSQuery q, int *size)
 	if (*size < 2)
 		return res;
 
-	qsort_arg(res, *size, sizeof(QueryOperand *), compareQueryOperand, (void *) operand);
+	qsort_arg(res, *size, sizeof(QueryOperand *), QSORT_ARG_COMPARATOR_PTR(compareQueryOperand), (void *) operand);
 
 	ptr = res + 1;
 	prevptr = res;
@@ -183,7 +183,7 @@ SortAndUniqItems(TSQuery q, int *size)
 	/* remove duplicates */
 	while (ptr - res < *size)
 	{
-		if (compareQueryOperand((void *) ptr, (void *) prevptr, (void *) operand) != 0)
+		if (CALL_QSORT_ARG_COMPARATOR(compareQueryOperand, (void *) ptr, (void *) prevptr, (void *) operand) != 0)
 		{
 			prevptr++;
 			*prevptr = *ptr;

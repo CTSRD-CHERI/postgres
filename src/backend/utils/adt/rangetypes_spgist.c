@@ -264,9 +264,9 @@ spg_range_quad_picksplit(PG_FUNCTION_ARGS)
 
 	/* Sort range bounds in order to find medians */
 	qsort_arg(lowerBounds, nonEmptyCount, sizeof(RangeBound),
-			  bound_cmp, typcache);
+			  QSORT_ARG_COMPARATOR_PTR(bound_cmp), typcache);
 	qsort_arg(upperBounds, nonEmptyCount, sizeof(RangeBound),
-			  bound_cmp, typcache);
+			  QSORT_ARG_COMPARATOR_PTR(bound_cmp), typcache);
 
 	/* Construct "centroid" range from medians of lower and upper bounds */
 	centroid = range_serialize(typcache, &lowerBounds[nonEmptyCount / 2],

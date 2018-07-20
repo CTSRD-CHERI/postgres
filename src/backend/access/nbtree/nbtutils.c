@@ -473,7 +473,7 @@ _bt_sort_array_elements(IndexScanDesc scan, ScanKey skey,
 	cxt.collation = skey->sk_collation;
 	cxt.reverse = reverse;
 	qsort_arg((void *) elems, nelems, sizeof(Datum),
-			  _bt_compare_array_elements, (void *) &cxt);
+			  QSORT_ARG_COMPARATOR_PTR(_bt_compare_array_elements), (void *) &cxt);
 
 	/* Now scan the sorted elements and remove duplicates */
 	last_non_dup = 0;

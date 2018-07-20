@@ -1780,7 +1780,7 @@ uniqueifyJsonbObject(JsonbValue *object)
 
 	if (object->val.object.nPairs > 1)
 		qsort_arg(object->val.object.pairs, object->val.object.nPairs, sizeof(JsonbPair),
-				  lengthCompareJsonbPair, &hasNonUniq);
+				  QSORT_ARG_COMPARATOR_PTR(lengthCompareJsonbPair), &hasNonUniq);
 
 	if (hasNonUniq)
 	{

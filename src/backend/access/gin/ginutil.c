@@ -524,7 +524,7 @@ ginExtractEntries(GinState *ginstate, OffsetNumber attnum,
 		arg.collation = ginstate->supportCollation[attnum - 1];
 		arg.haveDups = false;
 		qsort_arg(keydata, *nentries, sizeof(keyEntryData),
-				  cmpEntries, (void *) &arg);
+				  QSORT_ARG_COMPARATOR_PTR(cmpEntries), (void *) &arg);
 
 		if (arg.haveDups)
 		{
@@ -536,7 +536,7 @@ ginExtractEntries(GinState *ginstate, OffsetNumber attnum,
 			j = 1;
 			for (i = 1; i < *nentries; i++)
 			{
-				if (cmpEntries(&keydata[i - 1], &keydata[i], &arg) != 0)
+				if (CALL_QSORT_ARG_COMPARATOR(cmpEntries, &keydata[i - 1], &keydata[i], &arg) != 0)
 				{
 					entries[j] = keydata[i].datum;
 					nullFlags[j] = keydata[i].isnull;
