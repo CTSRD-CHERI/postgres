@@ -381,6 +381,9 @@ typedef Datum *DatumPtr;
 #define GET_2_BYTES(datum)	(((pg_vaddr_t) (datum)) & (pg_vaddr_t)PG_UINT16_MAX)
 #define GET_4_BYTES(datum)	(((pg_vaddr_t) (datum)) & (pg_vaddr_t)PG_UINT32_MAX)
 #ifdef __CHERI_PURE_CAPABILITY__
+#ifndef USE_FLOAT8_BYVAL
+#error "EXPECTED FLOAT8 passed byval for CHERI"
+#endif
 /*
  * XXXAR: make sure that we actually return a 64 bit quanitity
  * This makes sure that there is definitely no tag on the resulting value
