@@ -60,6 +60,7 @@
 #define		DatumBigEndianToNative(x)	(x)
 #else							/* !WORDS_BIGENDIAN */
 #if SIZEOF_DATUM >= 8
+/* FIXME: this is wrong for little-endian CHERI */
 #define		DatumBigEndianToNative(x)	BSWAP64(x)
 #else							/* SIZEOF_DATUM != 8 */
 #define		DatumBigEndianToNative(x)	BSWAP32(x)
