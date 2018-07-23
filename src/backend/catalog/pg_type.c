@@ -286,7 +286,9 @@ TypeCreate(Oid newTypeOid,
 								alignment, internalSize)));
 		}
 #if SIZEOF_DATUM >= 8
-		else if (internalSize == (int16) sizeof(Datum))
+		/* If Datum is a capability we can only pass up to
+		 * sizeof(vaddr_t) bytes by value */
+		else if (internalSize == (int16) sizeof(int64))
 		{
 			if (alignment != 'd')
 				ereport(ERROR,

@@ -45,8 +45,8 @@
 ( \
 	(attbyval) ? \
 	( \
-		(attlen) == (int) sizeof(Datum) ? \
-			*((Datum *)(T)) \
+		(attlen) == (int) sizeof(int64) ? \
+			Int64GetDatum(*((int64 *)(T))) \
 		: \
 	  ( \
 		(attlen) == (int) sizeof(int32) ? \
