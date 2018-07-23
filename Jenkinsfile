@@ -20,7 +20,7 @@ $WORKSPACE/cherisdk/bin/llvm-objcopy --strip-all tarball/opt/*/*/postgresql/pgxs
 '''
 
 
-for (i in ["mips" "cheri128", "cheri256"]) {
+for (i in ["mips", "cheri128", "cheri256"]) {
     String cpu = "${i}" // work around stupid groovy lambda captures
     cheribuildProject(target: 'postgres', cpu: cpu,
             // extraArgs: '--with-libstatcounters --postgres/no-debug-info --postgres/no-assertions',
