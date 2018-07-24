@@ -162,7 +162,8 @@ typedef struct
 {
 	uint8		va_header;		/* Always 0x80 or 0x01 */
 	uint8		va_tag;			/* Type of datum */
-	char		va_data[FLEXIBLE_ARRAY_MEMBER]; /* Type-specific data */
+	/* XXXAR: aligned for CHERI (since EOH_init_header() write a void* here) */
+	_Alignas(sizeof(void*)) char		va_data[FLEXIBLE_ARRAY_MEMBER]; /* Type-specific data */
 } varattrib_1b_e;
 
 /*
