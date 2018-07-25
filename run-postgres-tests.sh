@@ -76,6 +76,8 @@ then
 else
 	if [ "$?" = 1 ]; then
 		echo "TESTS UNSTABLE"
+		echo "CHECKING FOR ASSERTION FAILURES:"
+		grep TRAP "$OUTPUT_DIR/log/postmaster.log" || true
 		exit 0
 	else
 		echo "Got test failures, reading initdb log: $OUTPUT_DIR/log/initdb.log"
