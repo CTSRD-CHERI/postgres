@@ -118,7 +118,7 @@
  * ----------------
  */
 #ifdef EXEC_MERGEJOINDEBUG
-
+#include "access/printtup.h"
 #define MJ_nodeDisplay(l)				nodeDisplay(l)
 #define MJ_printf(s)					printf(s)
 #define MJ1_printf(s, p)				printf(s, p)
