@@ -24,6 +24,13 @@
  */
 typedef struct
 {
+#ifdef __CHERI_PURE_CAPABILITY__
+	/* Ensure that MAXALIGN(sizeof(RangeType) == sizeof(RangeType)) */
+	_Alignas(sizeof(void*))
+#elif !defined(__CHERI__)
+	/* just check that this doesn't break anything in the native build: */
+	_Alignas(32)
+#endif
 	int32		vl_len_;		/* varlena header (do not touch directly!) */
 	Oid			rangetypid;		/* range type's own OID */
 	/* Following the OID are zero to two bound values, then a flags byte */

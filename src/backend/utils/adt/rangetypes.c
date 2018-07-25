@@ -1567,7 +1567,13 @@ range_serialize(TypeCacheEntry *typcache, RangeBound *lower, RangeBound *upper,
 
 	/* Count space for varlena header and range type's OID */
 	msize = sizeof(RangeType);
-	Assert(msize == MAXALIGN(msize));
+
+	// XXXAR: doing this at compile time is way more sensible:
+	// Assert(msize == MAXALIGN(msize));
+	// uncomment to get the sizes printed by the compiler
+	// char (*__fail)(void)[sizeof(RangeType)] = 1;
+	// char (*__fail2)(void)[MAXALIGN(sizeof(RangeType))] = 1;
+	_Static_assert(sizeof(RangeType) == MAXALIGN(sizeof(RangeType)), "");
 
 	/* Count space for bounds */
 	if (RANGE_HAS_LBOUND(flags))
