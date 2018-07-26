@@ -15,6 +15,7 @@
 #define REWRITEMANIP_H
 
 #include "nodes/parsenodes.h"
+#include "nodes/nodeFuncs.h"
 
 
 typedef struct replace_rte_variables_context replace_rte_variables_context;
@@ -66,8 +67,7 @@ extern Node *replace_rte_variables(Node *node,
 					  replace_rte_variables_callback callback,
 					  void *callback_arg,
 					  bool *outer_hasSubLinks);
-extern Node *replace_rte_variables_mutator(Node *node,
-							  replace_rte_variables_context *context);
+extern DECLARE_NODE_MUTATOR(replace_rte_variables_mutator, replace_rte_variables_context *)
 
 extern Node *map_variable_attnos(Node *node,
 					int target_varno, int sublevels_up,

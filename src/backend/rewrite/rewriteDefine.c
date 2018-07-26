@@ -46,7 +46,7 @@
 
 static void checkRuleResultList(List *targetList, TupleDesc resultDesc,
 					bool isSelect, bool requireColumnNameMatch);
-static bool setRuleCheckAsUser_walker(Node *node, Oid *context);
+static DECLARE_NODE_WALKER(setRuleCheckAsUser_walker, Oid *)
 static void setRuleCheckAsUser_Query(Query *qry, Oid userid);
 
 
@@ -776,8 +776,7 @@ setRuleCheckAsUser(Node *node, Oid userid)
 }
 
 static bool
-setRuleCheckAsUser_walker(Node *node, Oid *context)
-{
+NODE_CALLBACK_FUNC(setRuleCheckAsUser_walker, Oid *context)
 	if (node == NULL)
 		return false;
 	if (IsA(node, Query))
@@ -785,7 +784,7 @@ setRuleCheckAsUser_walker(Node *node, Oid *context)
 		setRuleCheckAsUser_Query((Query *) node, *context);
 		return false;
 	}
-	return expression_tree_walker(node, setRuleCheckAsUser_walker,
+	return expression_tree_walker(node, setRuleCheckAsUser_walker_untyped,
 								  (void *) context);
 }
 
@@ -818,7 +817,7 @@ setRuleCheckAsUser_Query(Query *qry, Oid userid)
 
 	/* If there are sublinks, search for them and process their RTEs */
 	if (qry->hasSubLinks)
-		query_tree_walker(qry, setRuleCheckAsUser_walker, (void *) &userid,
+		query_tree_walker(qry, setRuleCheckAsUser_walker_untyped, (void *) &userid,
 						  QTW_IGNORE_RC_SUBQUERIES);
 }
 

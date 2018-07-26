@@ -47,7 +47,7 @@
 #include "utils/syscache.h"
 
 
-static bool find_minmax_aggs_walker(Node *node, List **context);
+static DECLARE_NODE_WALKER(find_minmax_aggs_walker, List **);
 static bool build_minmax_path(PlannerInfo *root, MinMaxAggInfo *mminfo,
 				  Oid eqop, Oid sortop, bool nulls_first);
 static void minmax_qp_callback(PlannerInfo *root, void *extra);
@@ -244,8 +244,7 @@ preprocess_minmax_aggregates(PlannerInfo *root, List *tlist)
  * references either.
  */
 static bool
-find_minmax_aggs_walker(Node *node, List **context)
-{
+NODE_CALLBACK_FUNC(find_minmax_aggs_walker, List **context)
 	if (node == NULL)
 		return false;
 	if (IsA(node, Aggref))
@@ -326,7 +325,7 @@ find_minmax_aggs_walker(Node *node, List **context)
 		return false;
 	}
 	Assert(!IsA(node, SubLink));
-	return expression_tree_walker(node, find_minmax_aggs_walker,
+	return expression_tree_walker(node, find_minmax_aggs_walker_untyped,
 								  (void *) context);
 }
 

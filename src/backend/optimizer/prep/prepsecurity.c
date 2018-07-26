@@ -42,8 +42,7 @@ static void expand_security_qual(PlannerInfo *root, List *tlist, int rt_index,
 static void security_barrier_replace_vars(Node *node,
 							  security_barrier_replace_vars_context *context);
 
-static bool security_barrier_replace_vars_walker(Node *node,
-							 security_barrier_replace_vars_context *context);
+static DECLARE_NODE_WALKER(security_barrier_replace_vars_walker, security_barrier_replace_vars_context *)
 
 
 /*
@@ -364,16 +363,14 @@ security_barrier_replace_vars(Node *node,
 	 */
 	if (node && IsA(node, Query))
 		query_tree_walker((Query *) node,
-						  security_barrier_replace_vars_walker,
+						  security_barrier_replace_vars_walker_untyped,
 						  (void *) context, 0);
 	else
 		security_barrier_replace_vars_walker(node, context);
 }
 
 static bool
-security_barrier_replace_vars_walker(Node *node,
-							  security_barrier_replace_vars_context *context)
-{
+NODE_CALLBACK_FUNC(security_barrier_replace_vars_walker, security_barrier_replace_vars_context *context)
 	if (node == NULL)
 		return false;
 
@@ -475,12 +472,12 @@ security_barrier_replace_vars_walker(Node *node,
 
 		context->sublevels_up++;
 		result = query_tree_walker((Query *) node,
-								   security_barrier_replace_vars_walker,
+								   security_barrier_replace_vars_walker_untyped,
 								   (void *) context, 0);
 		context->sublevels_up--;
 		return result;
 	}
 
-	return expression_tree_walker(node, security_barrier_replace_vars_walker,
+	return expression_tree_walker(node, security_barrier_replace_vars_walker_untyped,
 								  (void *) context);
 }

@@ -28,10 +28,10 @@
 static bool expression_returns_set_walker(Node *node, void *context);
 static int	leftmostLoc(int loc1, int loc2);
 static bool fix_opfuncids_walker(Node *node, void *context);
-static bool planstate_walk_subplans(List *plans, bool (*walker) (),
+static bool planstate_walk_subplans(List *plans, bool (*walker) (PlanState *, void *),
 												void *context);
 static bool planstate_walk_members(List *plans, PlanState **planstates,
-					   bool (*walker) (), void *context);
+					   bool (*walker) (PlanState *, void *), void *context);
 
 
 /*
@@ -1831,10 +1831,13 @@ check_functions_in_node(Node *node, check_function_callback checker,
 
 bool
 expression_tree_walker(Node *node,
-					   bool (*walker) (),
+					   bool (*_walker) (Node *, void *),
 					   void *context)
 {
 	ListCell   *temp;
+	/* Work around missing inheritance in C */
+	typedef bool (*anynode_walker) (void *, void *);
+	anynode_walker walker = (anynode_walker)_walker;
 
 	/*
 	 * The walker has already visited the current node, and so we need only
@@ -1871,16 +1874,16 @@ expression_tree_walker(Node *node,
 
 				/* recurse directly on List */
 				if (expression_tree_walker((Node *) expr->aggdirectargs,
-										   walker, context))
+										   _walker, context))
 					return true;
 				if (expression_tree_walker((Node *) expr->args,
-										   walker, context))
+										   _walker, context))
 					return true;
 				if (expression_tree_walker((Node *) expr->aggorder,
-										   walker, context))
+										   _walker, context))
 					return true;
 				if (expression_tree_walker((Node *) expr->aggdistinct,
-										   walker, context))
+										   _walker, context))
 					return true;
 				if (walker((Node *) expr->aggfilter, context))
 					return true;
@@ -1891,7 +1894,7 @@ expression_tree_walker(Node *node,
 				GroupingFunc *grouping = (GroupingFunc *) node;
 
 				if (expression_tree_walker((Node *) grouping->args,
-										   walker, context))
+										   _walker, context))
 					return true;
 			}
 			break;
@@ -1901,7 +1904,7 @@ expression_tree_walker(Node *node,
 
 				/* recurse directly on List */
 				if (expression_tree_walker((Node *) expr->args,
-										   walker, context))
+										   _walker, context))
 					return true;
 				if (walker((Node *) expr->aggfilter, context))
 					return true;
@@ -1913,10 +1916,10 @@ expression_tree_walker(Node *node,
 
 				/* recurse directly for upper/lower array index lists */
 				if (expression_tree_walker((Node *) aref->refupperindexpr,
-										   walker, context))
+										   _walker, context))
 					return true;
 				if (expression_tree_walker((Node *) aref->reflowerindexpr,
-										   walker, context))
+										   _walker, context))
 					return true;
 				/* walker must see the refexpr and refassgnexpr, however */
 				if (walker(aref->refexpr, context))
@@ -1930,7 +1933,7 @@ expression_tree_walker(Node *node,
 				FuncExpr   *expr = (FuncExpr *) node;
 
 				if (expression_tree_walker((Node *) expr->args,
-										   walker, context))
+										   _walker, context))
 					return true;
 			}
 			break;
@@ -1943,7 +1946,7 @@ expression_tree_walker(Node *node,
 				OpExpr	   *expr = (OpExpr *) node;
 
 				if (expression_tree_walker((Node *) expr->args,
-										   walker, context))
+										   _walker, context))
 					return true;
 			}
 			break;
@@ -1952,7 +1955,7 @@ expression_tree_walker(Node *node,
 				ScalarArrayOpExpr *expr = (ScalarArrayOpExpr *) node;
 
 				if (expression_tree_walker((Node *) expr->args,
-										   walker, context))
+										   _walker, context))
 					return true;
 			}
 			break;
@@ -1961,7 +1964,7 @@ expression_tree_walker(Node *node,
 				BoolExpr   *expr = (BoolExpr *) node;
 
 				if (expression_tree_walker((Node *) expr->args,
-										   walker, context))
+										   _walker, context))
 					return true;
 			}
 			break;
@@ -1988,7 +1991,7 @@ expression_tree_walker(Node *node,
 					return true;
 				/* also examine args list */
 				if (expression_tree_walker((Node *) subplan->args,
-										   walker, context))
+										   _walker, context))
 					return true;
 			}
 			break;
@@ -2173,7 +2176,7 @@ expression_tree_walker(Node *node,
 				AppendRelInfo *appinfo = (AppendRelInfo *) node;
 
 				if (expression_tree_walker((Node *) appinfo->translated_vars,
-										   walker, context))
+										   _walker, context))
 					return true;
 			}
 			break;
@@ -2186,7 +2189,7 @@ expression_tree_walker(Node *node,
 				TableSampleClause *tsc = (TableSampleClause *) node;
 
 				if (expression_tree_walker((Node *) tsc->args,
-										   walker, context))
+										   _walker, context))
 					return true;
 				if (walker((Node *) tsc->repeatable, context))
 					return true;
@@ -2217,7 +2220,7 @@ expression_tree_walker(Node *node,
  */
 bool
 query_tree_walker(Query *query,
-				  bool (*walker) (),
+				  bool (*walker) (Node *, void *),
 				  void *context,
 				  int flags)
 {
@@ -3018,7 +3021,7 @@ expression_tree_mutator(Node *node,
  */
 Query *
 query_tree_mutator(Query *query,
-				   Node *(*mutator) (),
+				   Node *(*mutator) (Node *, void *),
 				   void *context,
 				   int flags)
 {
@@ -3124,7 +3127,7 @@ range_table_mutator(List *rtable,
  */
 bool
 query_or_expression_tree_walker(Node *node,
-								bool (*walker) (),
+								bool (*walker) (Node *, void *),
 								void *context,
 								int flags)
 {
@@ -3147,7 +3150,7 @@ query_or_expression_tree_walker(Node *node,
  */
 Node *
 query_or_expression_tree_mutator(Node *node,
-								 Node *(*mutator) (),
+								 Node *(*mutator) (Node *, void *),
 								 void *context,
 								 int flags)
 {
@@ -3178,10 +3181,13 @@ query_or_expression_tree_mutator(Node *node,
  */
 bool
 raw_expression_tree_walker(Node *node,
-						   bool (*walker) (),
+						   bool (*_walker) (Node *, void *),
 						   void *context)
 {
 	ListCell   *temp;
+	/* Work around missing inheritance in C */
+	typedef bool (*anynode_walker) (void *, void *);
+	anynode_walker walker = (anynode_walker)_walker;
 
 	/*
 	 * The walker has already visited the current node, and so we need only
@@ -3617,7 +3623,7 @@ raw_expression_tree_walker(Node *node,
  */
 bool
 planstate_tree_walker(PlanState *planstate,
-					  bool (*walker) (),
+					  bool (*walker) (PlanState *, void *),
 					  void *context)
 {
 	Plan	   *plan = planstate->plan;
@@ -3701,7 +3707,7 @@ planstate_tree_walker(PlanState *planstate,
  */
 static bool
 planstate_walk_subplans(List *plans,
-						bool (*walker) (),
+						bool (*walker) (PlanState *, void *),
 						void *context)
 {
 	ListCell   *lc;
@@ -3727,7 +3733,7 @@ planstate_walk_subplans(List *plans,
  */
 static bool
 planstate_walk_members(List *plans, PlanState **planstates,
-					   bool (*walker) (), void *context)
+					   bool (*walker) (PlanState *, void *), void *context)
 {
 	int			nplans = list_length(plans);
 	int			j;

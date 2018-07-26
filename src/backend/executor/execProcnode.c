@@ -796,7 +796,7 @@ ExecEndNode(PlanState *node)
  * at the end of ExecutorRun.
  */
 bool
-ExecShutdownNode(PlanState *node)
+ExecShutdownNode(PlanState *node, void* arg)
 {
 	if (node == NULL)
 		return false;

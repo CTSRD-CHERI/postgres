@@ -99,7 +99,7 @@ static double cached_plan_cost(CachedPlan *plan, bool include_planner);
 static void AcquireExecutorLocks(List *stmt_list, bool acquire);
 static void AcquirePlannerLocks(List *stmt_list, bool acquire);
 static void ScanQueryForLocks(Query *parsetree, bool acquire);
-static bool ScanQueryWalker(Node *node, bool *acquire);
+static DECLARE_NODE_WALKER(ScanQueryWalker, bool *);
 static TupleDesc PlanCacheComputeResultDesc(List *stmt_list);
 static void PlanCacheRelCallback(Datum arg, Oid relid);
 static void PlanCacheFuncCallback(Datum arg, int cacheid, uint32 hashvalue);
@@ -1615,7 +1615,7 @@ ScanQueryForLocks(Query *parsetree, bool acquire)
 	 */
 	if (parsetree->hasSubLinks)
 	{
-		query_tree_walker(parsetree, ScanQueryWalker,
+		query_tree_walker(parsetree, ScanQueryWalker_untyped,
 						  (void *) &acquire,
 						  QTW_IGNORE_RC_SUBQUERIES);
 	}
@@ -1625,8 +1625,7 @@ ScanQueryForLocks(Query *parsetree, bool acquire)
  * Walker to find sublink subqueries for ScanQueryForLocks
  */
 static bool
-ScanQueryWalker(Node *node, bool *acquire)
-{
+NODE_CALLBACK_FUNC(ScanQueryWalker, bool *acquire)
 	if (node == NULL)
 		return false;
 	if (IsA(node, SubLink))
@@ -1642,7 +1641,7 @@ ScanQueryWalker(Node *node, bool *acquire)
 	 * Do NOT recurse into Query nodes, because ScanQueryForLocks already
 	 * processed subselects of subselects for us.
 	 */
-	return expression_tree_walker(node, ScanQueryWalker,
+	return expression_tree_walker(node, ScanQueryWalker_untyped,
 								  (void *) acquire);
 }
 

@@ -66,23 +66,21 @@ static List *generate_subquery_vars(PlannerInfo *root, List *tlist,
 static Node *convert_testexpr(PlannerInfo *root,
 				 Node *testexpr,
 				 List *subst_nodes);
-static Node *convert_testexpr_mutator(Node *node,
-						 convert_testexpr_context *context);
+static DECLARE_NODE_MUTATOR(convert_testexpr_mutator, convert_testexpr_context *)
 static bool subplan_is_hashable(Plan *plan);
 static bool testexpr_is_hashable(Node *testexpr);
 static bool hash_ok_operator(OpExpr *expr);
 static bool simplify_EXISTS_query(PlannerInfo *root, Query *query);
 static Query *convert_EXISTS_to_ANY(PlannerInfo *root, Query *subselect,
 					  Node **testexpr, List **paramIds);
-static Node *replace_correlation_vars_mutator(Node *node, PlannerInfo *root);
-static Node *process_sublinks_mutator(Node *node,
-						 process_sublinks_context *context);
+static DECLARE_NODE_MUTATOR(replace_correlation_vars_mutator, PlannerInfo *)
+static DECLARE_NODE_MUTATOR(process_sublinks_mutator, process_sublinks_context *)
 static Bitmapset *finalize_plan(PlannerInfo *root,
 			  Plan *plan,
 			  Bitmapset *valid_params,
 			  Bitmapset *scan_params);
-static bool finalize_primnode(Node *node, finalize_primnode_context *context);
-static bool finalize_agg_primnode(Node *node, finalize_primnode_context *context);
+static DECLARE_NODE_WALKER(finalize_primnode, finalize_primnode_context *)
+static DECLARE_NODE_WALKER(finalize_agg_primnode, finalize_primnode_context *)
 
 
 /*
@@ -971,9 +969,7 @@ convert_testexpr(PlannerInfo *root,
 }
 
 static Node *
-convert_testexpr_mutator(Node *node,
-						 convert_testexpr_context *context)
-{
+NODE_CALLBACK_FUNC(convert_testexpr_mutator, convert_testexpr_context *context)
 	if (node == NULL)
 		return NULL;
 	if (IsA(node, Param))
@@ -1018,7 +1014,7 @@ convert_testexpr_mutator(Node *node,
 		return node;
 	}
 	return expression_tree_mutator(node,
-								   convert_testexpr_mutator,
+								   convert_testexpr_mutator_untyped,
 								   (void *) context);
 }
 
@@ -1901,8 +1897,7 @@ SS_replace_correlation_vars(PlannerInfo *root, Node *expr)
 }
 
 static Node *
-replace_correlation_vars_mutator(Node *node, PlannerInfo *root)
-{
+NODE_CALLBACK_FUNC(replace_correlation_vars_mutator, PlannerInfo *root)
 	if (node == NULL)
 		return NULL;
 	if (IsA(node, Var))
@@ -1927,7 +1922,7 @@ replace_correlation_vars_mutator(Node *node, PlannerInfo *root)
 			return (Node *) replace_outer_grouping(root, (GroupingFunc *) node);
 	}
 	return expression_tree_mutator(node,
-								   replace_correlation_vars_mutator,
+								   replace_correlation_vars_mutator_untyped,
 								   (void *) root);
 }
 
@@ -1949,8 +1944,7 @@ SS_process_sublinks(PlannerInfo *root, Node *expr, bool isQual)
 }
 
 static Node *
-process_sublinks_mutator(Node *node, process_sublinks_context *context)
-{
+NODE_CALLBACK_FUNC(process_sublinks_mutator, process_sublinks_context *context)
 	process_sublinks_context locContext;
 
 	locContext.root = context->root;
@@ -2069,7 +2063,7 @@ process_sublinks_mutator(Node *node, process_sublinks_context *context)
 	locContext.isTopQual = false;
 
 	return expression_tree_mutator(node,
-								   process_sublinks_mutator,
+								   process_sublinks_mutator_untyped,
 								   (void *) &locContext);
 }
 
@@ -2778,8 +2772,7 @@ finalize_plan(PlannerInfo *root, Plan *plan, Bitmapset *valid_params,
  * expression tree to the result set.
  */
 static bool
-finalize_primnode(Node *node, finalize_primnode_context *context)
-{
+NODE_CALLBACK_FUNC(finalize_primnode, finalize_primnode_context *context)
 	if (node == NULL)
 		return false;
 	if (IsA(node, Param))
@@ -2833,7 +2826,7 @@ finalize_primnode(Node *node, finalize_primnode_context *context)
 
 		return false;			/* no more to do here */
 	}
-	return expression_tree_walker(node, finalize_primnode,
+	return expression_tree_walker(node, finalize_primnode_untyped,
 								  (void *) context);
 }
 
@@ -2843,8 +2836,7 @@ finalize_primnode(Node *node, finalize_primnode_context *context)
  * arguments to the result set.
  */
 static bool
-finalize_agg_primnode(Node *node, finalize_primnode_context *context)
-{
+NODE_CALLBACK_FUNC(finalize_agg_primnode, finalize_primnode_context *context)
 	if (node == NULL)
 		return false;
 	if (IsA(node, Aggref))
@@ -2856,7 +2848,7 @@ finalize_agg_primnode(Node *node, finalize_primnode_context *context)
 		finalize_primnode((Node *) agg->aggfilter, context);
 		return false;			/* there can't be any Aggrefs below here */
 	}
-	return expression_tree_walker(node, finalize_agg_primnode,
+	return expression_tree_walker(node, finalize_agg_primnode_untyped,
 								  (void *) context);
 }
 

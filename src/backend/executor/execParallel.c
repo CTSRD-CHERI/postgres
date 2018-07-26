@@ -96,14 +96,12 @@ typedef struct ExecParallelInitializeDSMContext
 
 /* Helper functions that run in the parallel leader. */
 static char *ExecSerializePlan(Plan *plan, EState *estate);
-static bool ExecParallelEstimate(PlanState *node,
-					 ExecParallelEstimateContext *e);
-static bool ExecParallelInitializeDSM(PlanState *node,
-						  ExecParallelInitializeDSMContext *d);
+static bool ExecParallelEstimate(PlanState *node, void* arg);
+static bool ExecParallelInitializeDSM(PlanState *node, /*ExecParallelInitializeDSMContext*/void *d);
 static shm_mq_handle **ExecParallelSetupTupleQueues(ParallelContext *pcxt,
 							 bool reinitialize);
 static bool ExecParallelRetrieveInstrumentation(PlanState *planstate,
-							 SharedExecutorInstrumentation *instrumentation);
+							 /*SharedExecutorInstrumentation*/void *instrumentation);
 
 /* Helper function that runs in the parallel worker. */
 static DestReceiver *ExecParallelGetReceiver(dsm_segment *seg, shm_toc *toc);
@@ -175,8 +173,9 @@ ExecSerializePlan(Plan *plan, EState *estate)
  * we know how many SharedPlanStateInstrumentation structures we need.
  */
 static bool
-ExecParallelEstimate(PlanState *planstate, ExecParallelEstimateContext *e)
+ExecParallelEstimate(PlanState *planstate, void *arg)
 {
+	ExecParallelEstimateContext *e = arg;
 	if (planstate == NULL)
 		return false;
 
@@ -213,9 +212,9 @@ ExecParallelEstimate(PlanState *planstate, ExecParallelEstimateContext *e)
  * parallel execution.
  */
 static bool
-ExecParallelInitializeDSM(PlanState *planstate,
-						  ExecParallelInitializeDSMContext *d)
+ExecParallelInitializeDSM(PlanState *planstate, void* arg)
 {
+	ExecParallelInitializeDSMContext *d = arg;
 	if (planstate == NULL)
 		return false;
 
@@ -491,9 +490,9 @@ ExecInitParallelPlan(PlanState *planstate, EState *estate, int nworkers)
  * dynamic shared memory.
  */
 static bool
-ExecParallelRetrieveInstrumentation(PlanState *planstate,
-							  SharedExecutorInstrumentation *instrumentation)
+ExecParallelRetrieveInstrumentation(PlanState *planstate, void* _arg)
 {
+	SharedExecutorInstrumentation *instrumentation = _arg;
 	Instrumentation *instrument;
 	int			i;
 	int			n;
@@ -634,9 +633,9 @@ ExecParallelGetQueryDesc(shm_toc *toc, DestReceiver *receiver,
  * dynamic shared memory, so that the parallel leader can retrieve it.
  */
 static bool
-ExecParallelReportInstrumentation(PlanState *planstate,
-							  SharedExecutorInstrumentation *instrumentation)
+ExecParallelReportInstrumentation(PlanState *planstate, void* _arg)
 {
+	SharedExecutorInstrumentation *instrumentation = _arg;
 	int			i;
 	int			plan_node_id = planstate->plan->plan_node_id;
 	Instrumentation *instrument;
@@ -675,8 +674,9 @@ ExecParallelReportInstrumentation(PlanState *planstate,
  * is allocated and initialized by executor; that is, after ExecutorStart().
  */
 static bool
-ExecParallelInitializeWorker(PlanState *planstate, shm_toc *toc)
+ExecParallelInitializeWorker(PlanState *planstate, void* _arg)
 {
+	shm_toc *toc = _arg;
 	if (planstate == NULL)
 		return false;
 

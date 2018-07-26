@@ -194,7 +194,7 @@ static bool exec_simple_check_node(Node *node);
 static void exec_simple_check_plan(PLpgSQL_expr *expr);
 static void exec_simple_recheck_plan(PLpgSQL_expr *expr, CachedPlan *cplan);
 static void exec_check_rw_parameter(PLpgSQL_expr *expr, int target_dno);
-static bool contains_target_param(Node *node, int *target_dno);
+static DECLARE_NODE_WALKER(contains_target_param, int *)
 static bool exec_eval_simple_expr(PLpgSQL_execstate *estate,
 					  PLpgSQL_expr *expr,
 					  Datum *result,
@@ -6800,8 +6800,7 @@ exec_check_rw_parameter(PLpgSQL_expr *expr, int target_dno)
  * Recursively check for a Param referencing the target variable
  */
 static bool
-contains_target_param(Node *node, int *target_dno)
-{
+NODE_CALLBACK_FUNC(contains_target_param, int *target_dno)
 	if (node == NULL)
 		return false;
 	if (IsA(node, Param))
@@ -6813,7 +6812,7 @@ contains_target_param(Node *node, int *target_dno)
 			return true;
 		return false;
 	}
-	return expression_tree_walker(node, contains_target_param,
+	return expression_tree_walker(node, contains_target_param_untyped,
 								  (void *) target_dno);
 }
 

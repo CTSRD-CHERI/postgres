@@ -83,12 +83,12 @@ static void analyzeCTE(ParseState *pstate, CommonTableExpr *cte);
 
 /* Dependency processing functions */
 static void makeDependencyGraph(CteState *cstate);
-static bool makeDependencyGraphWalker(Node *node, CteState *cstate);
+static DECLARE_NODE_WALKER(makeDependencyGraphWalker, CteState *)
 static void TopologicalSort(ParseState *pstate, CteItem *items, int numitems);
 
 /* Recursion validity checker functions */
 static void checkWellFormedRecursion(CteState *cstate);
-static bool checkWellFormedRecursionWalker(Node *node, CteState *cstate);
+static DECLARE_NODE_WALKER(checkWellFormedRecursionWalker, CteState *)
 static void checkWellFormedSelectStmt(SelectStmt *stmt, CteState *cstate);
 
 
@@ -449,8 +449,7 @@ makeDependencyGraph(CteState *cstate)
  * CTEs in a WITH RECURSIVE list.
  */
 static bool
-makeDependencyGraphWalker(Node *node, CteState *cstate)
-{
+NODE_CALLBACK_FUNC(makeDependencyGraphWalker, CteState *cstate)
 	if (node == NULL)
 		return false;
 	if (IsA(node, RangeVar))
@@ -528,7 +527,7 @@ makeDependencyGraphWalker(Node *node, CteState *cstate)
 					(void) makeDependencyGraphWalker(cte->ctequery, cstate);
 				}
 				(void) raw_expression_tree_walker(node,
-												  makeDependencyGraphWalker,
+												  makeDependencyGraphWalker_untyped,
 												  (void *) cstate);
 				cstate->innerwiths = list_delete_first(cstate->innerwiths);
 			}
@@ -550,7 +549,7 @@ makeDependencyGraphWalker(Node *node, CteState *cstate)
 					lfirst(cell1) = lappend((List *) lfirst(cell1), cte);
 				}
 				(void) raw_expression_tree_walker(node,
-												  makeDependencyGraphWalker,
+												  makeDependencyGraphWalker_untyped,
 												  (void *) cstate);
 				cstate->innerwiths = list_delete_first(cstate->innerwiths);
 			}
@@ -569,7 +568,7 @@ makeDependencyGraphWalker(Node *node, CteState *cstate)
 		return false;
 	}
 	return raw_expression_tree_walker(node,
-									  makeDependencyGraphWalker,
+									  makeDependencyGraphWalker_untyped,
 									  (void *) cstate);
 }
 
@@ -728,8 +727,7 @@ checkWellFormedRecursion(CteState *cstate)
  * Tree walker function to detect invalid self-references in a recursive query.
  */
 static bool
-checkWellFormedRecursionWalker(Node *node, CteState *cstate)
-{
+NODE_CALLBACK_FUNC(checkWellFormedRecursionWalker, CteState *cstate)
 	RecursionContext save_context = cstate->context;
 
 	if (node == NULL)
@@ -899,7 +897,7 @@ checkWellFormedRecursionWalker(Node *node, CteState *cstate)
 		return false;
 	}
 	return raw_expression_tree_walker(node,
-									  checkWellFormedRecursionWalker,
+									  checkWellFormedRecursionWalker_untyped,
 									  (void *) cstate);
 }
 
@@ -916,7 +914,7 @@ checkWellFormedSelectStmt(SelectStmt *stmt, CteState *cstate)
 	{
 		/* just recurse without changing state */
 		raw_expression_tree_walker((Node *) stmt,
-								   checkWellFormedRecursionWalker,
+								   checkWellFormedRecursionWalker_untyped,
 								   (void *) cstate);
 	}
 	else
@@ -926,7 +924,7 @@ checkWellFormedSelectStmt(SelectStmt *stmt, CteState *cstate)
 			case SETOP_NONE:
 			case SETOP_UNION:
 				raw_expression_tree_walker((Node *) stmt,
-										   checkWellFormedRecursionWalker,
+										   checkWellFormedRecursionWalker_untyped,
 										   (void *) cstate);
 				break;
 			case SETOP_INTERSECT:

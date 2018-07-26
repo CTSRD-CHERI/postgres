@@ -2831,9 +2831,7 @@ typedef struct
 } substitute_multiple_relids_context;
 
 static bool
-substitute_multiple_relids_walker(Node *node,
-								  substitute_multiple_relids_context *context)
-{
+NODE_CALLBACK_FUNC(substitute_multiple_relids_walker, substitute_multiple_relids_context *context)
 	if (node == NULL)
 		return false;
 	if (IsA(node, PlaceHolderVar))
@@ -2857,7 +2855,7 @@ substitute_multiple_relids_walker(Node *node,
 
 		context->sublevels_up++;
 		result = query_tree_walker((Query *) node,
-								   substitute_multiple_relids_walker,
+								   substitute_multiple_relids_walker_untyped,
 								   (void *) context, 0);
 		context->sublevels_up--;
 		return result;
@@ -2868,7 +2866,7 @@ substitute_multiple_relids_walker(Node *node,
 	Assert(!IsA(node, PlaceHolderInfo));
 	Assert(!IsA(node, MinMaxAggInfo));
 
-	return expression_tree_walker(node, substitute_multiple_relids_walker,
+	return expression_tree_walker(node, substitute_multiple_relids_walker_untyped,
 								  (void *) context);
 }
 
@@ -2885,7 +2883,7 @@ substitute_multiple_relids(Node *node, int varno, Relids subrelids)
 	 * Must be prepared to start with a Query or a bare expression tree.
 	 */
 	query_or_expression_tree_walker(node,
-									substitute_multiple_relids_walker,
+									substitute_multiple_relids_walker_untyped,
 									(void *) &context,
 									0);
 }

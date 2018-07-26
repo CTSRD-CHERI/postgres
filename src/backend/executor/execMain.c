@@ -1575,7 +1575,7 @@ ExecutePlan(EState *estate,
 		if (TupIsNull(slot))
 		{
 			/* Allow nodes to release or shut down resources. */
-			(void) ExecShutdownNode(planstate);
+			(void) ExecShutdownNode(planstate, NULL);
 			break;
 		}
 

@@ -40,13 +40,11 @@ typedef struct
 	int			win_location;
 } locate_windowfunc_context;
 
-static bool contain_aggs_of_level_walker(Node *node,
-							 contain_aggs_of_level_context *context);
-static bool locate_agg_of_level_walker(Node *node,
-						   locate_agg_of_level_context *context);
-static bool contain_windowfuncs_walker(Node *node, void *context);
-static bool locate_windowfunc_walker(Node *node,
-						 locate_windowfunc_context *context);
+
+static DECLARE_NODE_WALKER(contain_aggs_of_level_walker, contain_aggs_of_level_context *)
+static DECLARE_NODE_WALKER(locate_agg_of_level_walker, locate_agg_of_level_context *)
+static DECLARE_NODE_WALKER(contain_windowfuncs_walker, void *)
+static DECLARE_NODE_WALKER(locate_windowfunc_walker, locate_windowfunc_context *)
 static bool checkExprHasSubLink_walker(Node *node, void *context);
 static Relids offset_relid_set(Relids relids, int offset);
 static Relids adjust_relid_set(Relids relids, int oldrelid, int newrelid);
@@ -75,15 +73,13 @@ contain_aggs_of_level(Node *node, int levelsup)
 	 * it's a Query, we don't want to increment sublevels_up.
 	 */
 	return query_or_expression_tree_walker(node,
-										   contain_aggs_of_level_walker,
+										   contain_aggs_of_level_walker_untyped,
 										   (void *) &context,
 										   0);
 }
 
 static bool
-contain_aggs_of_level_walker(Node *node,
-							 contain_aggs_of_level_context *context)
-{
+NODE_CALLBACK_FUNC(contain_aggs_of_level_walker, contain_aggs_of_level_context *context)
 	if (node == NULL)
 		return false;
 	if (IsA(node, Aggref))
@@ -105,12 +101,12 @@ contain_aggs_of_level_walker(Node *node,
 
 		context->sublevels_up++;
 		result = query_tree_walker((Query *) node,
-								   contain_aggs_of_level_walker,
+								   contain_aggs_of_level_walker_untyped,
 								   (void *) context, 0);
 		context->sublevels_up--;
 		return result;
 	}
-	return expression_tree_walker(node, contain_aggs_of_level_walker,
+	return expression_tree_walker(node, contain_aggs_of_level_walker_untyped,
 								  (void *) context);
 }
 
@@ -140,7 +136,7 @@ locate_agg_of_level(Node *node, int levelsup)
 	 * it's a Query, we don't want to increment sublevels_up.
 	 */
 	(void) query_or_expression_tree_walker(node,
-										   locate_agg_of_level_walker,
+										   locate_agg_of_level_walker_untyped,
 										   (void *) &context,
 										   0);
 
@@ -148,9 +144,7 @@ locate_agg_of_level(Node *node, int levelsup)
 }
 
 static bool
-locate_agg_of_level_walker(Node *node,
-						   locate_agg_of_level_context *context)
-{
+NODE_CALLBACK_FUNC(locate_agg_of_level_walker, locate_agg_of_level_context *context)
 	if (node == NULL)
 		return false;
 	if (IsA(node, Aggref))
@@ -179,12 +173,12 @@ locate_agg_of_level_walker(Node *node,
 
 		context->sublevels_up++;
 		result = query_tree_walker((Query *) node,
-								   locate_agg_of_level_walker,
+								   locate_agg_of_level_walker_untyped,
 								   (void *) context, 0);
 		context->sublevels_up--;
 		return result;
 	}
-	return expression_tree_walker(node, locate_agg_of_level_walker,
+	return expression_tree_walker(node, locate_agg_of_level_walker_untyped,
 								  (void *) context);
 }
 
@@ -207,8 +201,7 @@ contain_windowfuncs(Node *node)
 }
 
 static bool
-contain_windowfuncs_walker(Node *node, void *context)
-{
+NODE_CALLBACK_FUNC(contain_windowfuncs_walker, void *context)
 	if (node == NULL)
 		return false;
 	if (IsA(node, WindowFunc))
@@ -243,7 +236,7 @@ locate_windowfunc(Node *node)
 	 * it's a Query, we don't want to increment sublevels_up.
 	 */
 	(void) query_or_expression_tree_walker(node,
-										   locate_windowfunc_walker,
+										   locate_windowfunc_walker_untyped,
 										   (void *) &context,
 										   0);
 
@@ -251,8 +244,7 @@ locate_windowfunc(Node *node)
 }
 
 static bool
-locate_windowfunc_walker(Node *node, locate_windowfunc_context *context)
-{
+NODE_CALLBACK_FUNC(locate_windowfunc_walker, locate_windowfunc_context *context)
 	if (node == NULL)
 		return false;
 	if (IsA(node, WindowFunc))
@@ -265,7 +257,7 @@ locate_windowfunc_walker(Node *node, locate_windowfunc_context *context)
 		/* else fall through to examine argument */
 	}
 	/* Mustn't recurse into subselects */
-	return expression_tree_walker(node, locate_windowfunc_walker,
+	return expression_tree_walker(node, locate_windowfunc_walker_untyped,
 								  (void *) context);
 }
 
@@ -336,9 +328,9 @@ typedef struct
 	int			sublevels_up;
 } OffsetVarNodes_context;
 
+static DECLARE_NODE_WALKER(OffsetVarNodes_walker, OffsetVarNodes_context *)
 static bool
-OffsetVarNodes_walker(Node *node, OffsetVarNodes_context *context)
-{
+NODE_CALLBACK_FUNC(OffsetVarNodes_walker, OffsetVarNodes_context *context)
 	if (node == NULL)
 		return false;
 	if (IsA(node, Var))
@@ -411,12 +403,12 @@ OffsetVarNodes_walker(Node *node, OffsetVarNodes_context *context)
 		bool		result;
 
 		context->sublevels_up++;
-		result = query_tree_walker((Query *) node, OffsetVarNodes_walker,
+		result = query_tree_walker((Query *) node, OffsetVarNodes_walker_untyped,
 								   (void *) context, 0);
 		context->sublevels_up--;
 		return result;
 	}
-	return expression_tree_walker(node, OffsetVarNodes_walker,
+	return expression_tree_walker(node, OffsetVarNodes_walker_untyped,
 								  (void *) context);
 }
 
@@ -461,7 +453,7 @@ OffsetVarNodes(Node *node, int offset, int sublevels_up)
 				rc->rti += offset;
 			}
 		}
-		query_tree_walker(qry, OffsetVarNodes_walker,
+		query_tree_walker(qry, OffsetVarNodes_walker_untyped,
 						  (void *) &context, 0);
 	}
 	else
@@ -500,9 +492,10 @@ typedef struct
 	int			sublevels_up;
 } ChangeVarNodes_context;
 
+static DECLARE_NODE_WALKER(ChangeVarNodes_walker, ChangeVarNodes_context *)
+
 static bool
-ChangeVarNodes_walker(Node *node, ChangeVarNodes_context *context)
-{
+NODE_CALLBACK_FUNC(ChangeVarNodes_walker, ChangeVarNodes_context *context)
 	if (node == NULL)
 		return false;
 	if (IsA(node, Var))
@@ -594,12 +587,12 @@ ChangeVarNodes_walker(Node *node, ChangeVarNodes_context *context)
 		bool		result;
 
 		context->sublevels_up++;
-		result = query_tree_walker((Query *) node, ChangeVarNodes_walker,
+		result = query_tree_walker((Query *) node, ChangeVarNodes_walker_untyped,
 								   (void *) context, 0);
 		context->sublevels_up--;
 		return result;
 	}
-	return expression_tree_walker(node, ChangeVarNodes_walker,
+	return expression_tree_walker(node, ChangeVarNodes_walker_untyped,
 								  (void *) context);
 }
 
@@ -647,7 +640,7 @@ ChangeVarNodes(Node *node, int rt_index, int new_index, int sublevels_up)
 					rc->rti = new_index;
 			}
 		}
-		query_tree_walker(qry, ChangeVarNodes_walker,
+		query_tree_walker(qry, ChangeVarNodes_walker_untyped,
 						  (void *) &context, 0);
 	}
 	else
@@ -697,9 +690,7 @@ typedef struct
 } IncrementVarSublevelsUp_context;
 
 static bool
-IncrementVarSublevelsUp_walker(Node *node,
-							   IncrementVarSublevelsUp_context *context)
-{
+NODE_CALLBACK_FUNC(IncrementVarSublevelsUp_walker, IncrementVarSublevelsUp_context *context)
 	if (node == NULL)
 		return false;
 	if (IsA(node, Var))
@@ -759,13 +750,13 @@ IncrementVarSublevelsUp_walker(Node *node,
 
 		context->min_sublevels_up++;
 		result = query_tree_walker((Query *) node,
-								   IncrementVarSublevelsUp_walker,
+								   IncrementVarSublevelsUp_walker_untyped,
 								   (void *) context,
 								   QTW_EXAMINE_RTES);
 		context->min_sublevels_up--;
 		return result;
 	}
-	return expression_tree_walker(node, IncrementVarSublevelsUp_walker,
+	return expression_tree_walker(node, IncrementVarSublevelsUp_walker_untyped,
 								  (void *) context);
 }
 
@@ -783,7 +774,7 @@ IncrementVarSublevelsUp(Node *node, int delta_sublevels_up,
 	 * it's a Query, we don't want to increment sublevels_up.
 	 */
 	query_or_expression_tree_walker(node,
-									IncrementVarSublevelsUp_walker,
+									IncrementVarSublevelsUp_walker_untyped,
 									(void *) &context,
 									QTW_EXAMINE_RTES);
 }
@@ -802,7 +793,7 @@ IncrementVarSublevelsUp_rtable(List *rtable, int delta_sublevels_up,
 	context.min_sublevels_up = min_sublevels_up;
 
 	range_table_walker(rtable,
-					   IncrementVarSublevelsUp_walker,
+					   IncrementVarSublevelsUp_walker_untyped,
 					   (void *) &context,
 					   QTW_EXAMINE_RTES);
 }
@@ -819,10 +810,9 @@ typedef struct
 	int			sublevels_up;
 } rangeTableEntry_used_context;
 
+static DECLARE_NODE_WALKER(rangeTableEntry_used_walker, rangeTableEntry_used_context *)
 static bool
-rangeTableEntry_used_walker(Node *node,
-							rangeTableEntry_used_context *context)
-{
+NODE_CALLBACK_FUNC(rangeTableEntry_used_walker, rangeTableEntry_used_context *context)
 	if (node == NULL)
 		return false;
 	if (IsA(node, Var))
@@ -876,12 +866,12 @@ rangeTableEntry_used_walker(Node *node,
 		bool		result;
 
 		context->sublevels_up++;
-		result = query_tree_walker((Query *) node, rangeTableEntry_used_walker,
+		result = query_tree_walker((Query *) node, rangeTableEntry_used_walker_untyped,
 								   (void *) context, 0);
 		context->sublevels_up--;
 		return result;
 	}
-	return expression_tree_walker(node, rangeTableEntry_used_walker,
+	return expression_tree_walker(node, rangeTableEntry_used_walker_untyped,
 								  (void *) context);
 }
 
@@ -898,7 +888,7 @@ rangeTableEntry_used(Node *node, int rt_index, int sublevels_up)
 	 * it's a Query, we don't want to increment sublevels_up.
 	 */
 	return query_or_expression_tree_walker(node,
-										   rangeTableEntry_used_walker,
+										   rangeTableEntry_used_walker_untyped,
 										   (void *) &context,
 										   0);
 }
@@ -1110,7 +1100,7 @@ replace_rte_variables(Node *node, int target_varno, int sublevels_up,
 	 * it's a Query, we don't want to increment sublevels_up.
 	 */
 	result = query_or_expression_tree_mutator(node,
-											  replace_rte_variables_mutator,
+											  replace_rte_variables_mutator_untyped,
 											  (void *) &context,
 											  0);
 
@@ -1128,9 +1118,7 @@ replace_rte_variables(Node *node, int target_varno, int sublevels_up,
 }
 
 Node *
-replace_rte_variables_mutator(Node *node,
-							  replace_rte_variables_context *context)
-{
+NODE_CALLBACK_FUNC(replace_rte_variables_mutator, replace_rte_variables_context *context)
 	if (node == NULL)
 		return NULL;
 	if (IsA(node, Var))
@@ -1180,7 +1168,7 @@ replace_rte_variables_mutator(Node *node,
 		save_inserted_sublink = context->inserted_sublink;
 		context->inserted_sublink = ((Query *) node)->hasSubLinks;
 		newnode = query_tree_mutator((Query *) node,
-									 replace_rte_variables_mutator,
+									 replace_rte_variables_mutator_untyped,
 									 (void *) context,
 									 0);
 		newnode->hasSubLinks |= context->inserted_sublink;
@@ -1188,7 +1176,7 @@ replace_rte_variables_mutator(Node *node,
 		context->sublevels_up--;
 		return (Node *) newnode;
 	}
-	return expression_tree_mutator(node, replace_rte_variables_mutator,
+	return expression_tree_mutator(node, replace_rte_variables_mutator_untyped,
 								   (void *) context);
 }
 
@@ -1226,10 +1214,9 @@ typedef struct
 	bool	   *found_whole_row;	/* output flag */
 } map_variable_attnos_context;
 
+static DECLARE_NODE_MUTATOR(map_variable_attnos_mutator, map_variable_attnos_context *)
 static Node *
-map_variable_attnos_mutator(Node *node,
-							map_variable_attnos_context *context)
-{
+NODE_CALLBACK_FUNC(map_variable_attnos_mutator, map_variable_attnos_context *context)
 	if (node == NULL)
 		return NULL;
 	if (IsA(node, Var))
@@ -1269,13 +1256,13 @@ map_variable_attnos_mutator(Node *node,
 
 		context->sublevels_up++;
 		newnode = query_tree_mutator((Query *) node,
-									 map_variable_attnos_mutator,
+									 map_variable_attnos_mutator_untyped,
 									 (void *) context,
 									 0);
 		context->sublevels_up--;
 		return (Node *) newnode;
 	}
-	return expression_tree_mutator(node, map_variable_attnos_mutator,
+	return expression_tree_mutator(node, map_variable_attnos_mutator_untyped,
 								   (void *) context);
 }
 
@@ -1300,7 +1287,7 @@ map_variable_attnos(Node *node,
 	 * it's a Query, we don't want to increment sublevels_up.
 	 */
 	return query_or_expression_tree_mutator(node,
-											map_variable_attnos_mutator,
+											map_variable_attnos_mutator_untyped,
 											(void *) &context,
 											0);
 }

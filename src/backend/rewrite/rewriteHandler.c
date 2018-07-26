@@ -50,8 +50,7 @@ typedef struct acquireLocksOnSubLinks_context
 	bool		for_execute;	/* AcquireRewriteLocks' forExecute param */
 } acquireLocksOnSubLinks_context;
 
-static bool acquireLocksOnSubLinks(Node *node,
-					   acquireLocksOnSubLinks_context *context);
+static DECLARE_NODE_WALKER(acquireLocksOnSubLinks, acquireLocksOnSubLinks_context *)
 static Query *rewriteRuleAction(Query *parsetree,
 				  Query *rule_action,
 				  Node *rule_qual,
@@ -280,7 +279,7 @@ AcquireRewriteLocks(Query *parsetree,
 	 * the rtable and cteList.
 	 */
 	if (parsetree->hasSubLinks)
-		query_tree_walker(parsetree, acquireLocksOnSubLinks, &context,
+		query_tree_walker(parsetree, acquireLocksOnSubLinks_untyped, &context,
 						  QTW_IGNORE_RC_SUBQUERIES);
 }
 
@@ -288,8 +287,7 @@ AcquireRewriteLocks(Query *parsetree,
  * Walker to find sublink subqueries for AcquireRewriteLocks
  */
 static bool
-acquireLocksOnSubLinks(Node *node, acquireLocksOnSubLinks_context *context)
-{
+NODE_CALLBACK_FUNC(acquireLocksOnSubLinks, acquireLocksOnSubLinks_context *context)
 	if (node == NULL)
 		return false;
 	if (IsA(node, SubLink))
@@ -307,7 +305,7 @@ acquireLocksOnSubLinks(Node *node, acquireLocksOnSubLinks_context *context)
 	 * Do NOT recurse into Query nodes, because AcquireRewriteLocks already
 	 * processed subselects of subselects for us.
 	 */
-	return expression_tree_walker(node, acquireLocksOnSubLinks, context);
+	return expression_tree_walker(node, acquireLocksOnSubLinks_untyped, context);
 }
 
 
@@ -1614,8 +1612,7 @@ markQueryForLocking(Query *qry, Node *jtnode,
  * the SubLink's subselect link with the possibly-rewritten subquery.
  */
 static bool
-fireRIRonSubLink(Node *node, List *activeRIRs)
-{
+NODE_CALLBACK_FUNC(fireRIRonSubLink, List *activeRIRs)
 	if (node == NULL)
 		return false;
 	if (IsA(node, SubLink))
@@ -1632,7 +1629,7 @@ fireRIRonSubLink(Node *node, List *activeRIRs)
 	 * Do NOT recurse into Query nodes, because fireRIRrules already processed
 	 * subselects of subselects for us.
 	 */
-	return expression_tree_walker(node, fireRIRonSubLink,
+	return expression_tree_walker(node, fireRIRonSubLink_untyped,
 								  (void *) activeRIRs);
 }
 
@@ -1786,7 +1783,7 @@ fireRIRrules(Query *parsetree, List *activeRIRs, bool forUpdatePushedDown)
 	 * the rtable and cteList.
 	 */
 	if (parsetree->hasSubLinks)
-		query_tree_walker(parsetree, fireRIRonSubLink, (void *) activeRIRs,
+		query_tree_walker(parsetree, fireRIRonSubLink_untyped, (void *) activeRIRs,
 						  QTW_IGNORE_RC_SUBQUERIES);
 
 	/*
@@ -1857,10 +1854,10 @@ fireRIRrules(Query *parsetree, List *activeRIRs, bool forUpdatePushedDown)
 				 * get_row_security_policies, fire any RIR rules for them.
 				 */
 				expression_tree_walker((Node *) securityQuals,
-									   fireRIRonSubLink, (void *) activeRIRs);
+									   fireRIRonSubLink_untyped, (void *) activeRIRs);
 
 				expression_tree_walker((Node *) withCheckOptions,
-									   fireRIRonSubLink, (void *) activeRIRs);
+									   fireRIRonSubLink_untyped, (void *) activeRIRs);
 
 				activeRIRs = list_delete_first(activeRIRs);
 			}
@@ -2816,7 +2813,7 @@ rewriteTargetView(Query *parsetree, Relation view)
 		acquireLocksOnSubLinks_context context;
 
 		context.for_execute = true;
-		query_tree_walker(viewquery, acquireLocksOnSubLinks, &context,
+		query_tree_walker(viewquery, acquireLocksOnSubLinks_untyped, &context,
 						  QTW_IGNORE_RC_SUBQUERIES);
 	}
 

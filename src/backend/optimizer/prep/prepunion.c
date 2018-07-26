@@ -106,8 +106,7 @@ static void make_inh_translation_list(Relation oldrelation,
 						  List **translated_vars);
 static Bitmapset *translate_col_privs(const Bitmapset *parent_privs,
 					List *translated_vars);
-static Node *adjust_appendrel_attrs_mutator(Node *node,
-							   adjust_appendrel_attrs_context *context);
+static DECLARE_NODE_MUTATOR(adjust_appendrel_attrs_mutator, adjust_appendrel_attrs_context *)
 static Relids adjust_relid_set(Relids relids, Index oldrelid, Index newrelid);
 static List *adjust_inherited_tlist(List *tlist,
 					   AppendRelInfo *context);
@@ -1754,7 +1753,7 @@ adjust_appendrel_attrs(PlannerInfo *root, Node *node, AppendRelInfo *appinfo)
 		Query	   *newnode;
 
 		newnode = query_tree_mutator((Query *) node,
-									 adjust_appendrel_attrs_mutator,
+									 adjust_appendrel_attrs_mutator_untyped,
 									 (void *) &context,
 									 QTW_IGNORE_RC_SUBQUERIES);
 		if (newnode->resultRelation == appinfo->parent_relid)
@@ -1775,9 +1774,7 @@ adjust_appendrel_attrs(PlannerInfo *root, Node *node, AppendRelInfo *appinfo)
 }
 
 static Node *
-adjust_appendrel_attrs_mutator(Node *node,
-							   adjust_appendrel_attrs_context *context)
-{
+NODE_CALLBACK_FUNC(adjust_appendrel_attrs_mutator, adjust_appendrel_attrs_context *context)
 	AppendRelInfo *appinfo = context->appinfo;
 
 	if (node == NULL)
@@ -1895,7 +1892,7 @@ adjust_appendrel_attrs_mutator(Node *node,
 		JoinExpr   *j;
 
 		j = (JoinExpr *) expression_tree_mutator(node,
-											  adjust_appendrel_attrs_mutator,
+											  adjust_appendrel_attrs_mutator_untyped,
 												 (void *) context);
 		/* now fix JoinExpr's rtindex (probably never happens) */
 		if (context->sublevels_up == 0 &&
@@ -1909,7 +1906,7 @@ adjust_appendrel_attrs_mutator(Node *node,
 		PlaceHolderVar *phv;
 
 		phv = (PlaceHolderVar *) expression_tree_mutator(node,
-											  adjust_appendrel_attrs_mutator,
+											  adjust_appendrel_attrs_mutator_untyped,
 														 (void *) context);
 		/* now fix PlaceHolderVar's relid sets */
 		if (phv->phlevelsup == context->sublevels_up)
@@ -2001,13 +1998,13 @@ adjust_appendrel_attrs_mutator(Node *node,
 
 		context->sublevels_up++;
 		newnode = query_tree_mutator((Query *) node,
-									 adjust_appendrel_attrs_mutator,
+									 adjust_appendrel_attrs_mutator_untyped,
 									 (void *) context, 0);
 		context->sublevels_up--;
 		return (Node *) newnode;
 	}
 
-	return expression_tree_mutator(node, adjust_appendrel_attrs_mutator,
+	return expression_tree_mutator(node, adjust_appendrel_attrs_mutator_untyped,
 								   (void *) context);
 }
 
