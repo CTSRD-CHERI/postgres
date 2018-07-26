@@ -15,6 +15,7 @@
 #define RELATION_H
 
 #include "access/sdir.h"
+#include "access/amapi.h"
 #include "lib/stringinfo.h"
 #include "nodes/params.h"
 #include "nodes/parsenodes.h"
@@ -620,8 +621,13 @@ typedef struct IndexOptInfo
 	bool		amsearchnulls;	/* can AM search for NULL/NOT NULL entries? */
 	bool		amhasgettuple;	/* does AM have amgettuple interface? */
 	bool		amhasgetbitmap; /* does AM have amgetbitmap interface? */
+#if 0
 	/* Rather than include amapi.h here, we declare amcostestimate like this */
+	/* XXXAR: this breakks CHERI! */
 	void		(*amcostestimate) ();	/* AM's cost estimator */
+#else
+	amcostestimate_function amcostestimate;
+#endif
 } IndexOptInfo;
 
 /*
