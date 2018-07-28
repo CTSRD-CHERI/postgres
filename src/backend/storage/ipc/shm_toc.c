@@ -44,10 +44,35 @@ shm_toc_create(uint64 magic, void *address, Size nbytes)
 	Assert(nbytes > offsetof(shm_toc, toc_entry));
 	toc->toc_magic = magic;
 	SpinLockInit(&toc->toc_mutex);
+	// TODO: align down to ensure correct alignemnt of allocations?
+	// nbytes = TYPEALIGN_DOWN(ALIGNOF_BUFFER, nbytes);
 	toc->toc_total_bytes = nbytes;
 	toc->toc_allocated_bytes = 0;
 	toc->toc_nentry = 0;
 
+	/*
+	 * Ensure that we can actually get BUFFERALIGN() for shm_toc_allocate.
+	 * Since it allocates from the end we need to ensure that both toc and
+	 * nbytes are aligned to ALIGNOF_BUFFER.
+	 * TODO: we could just do this for the sum but having both aligned
+	 * might make CHERI happier.
+	 */
+	if ((nbytes % ALIGNOF_BUFFER) != 0 || ((pg_vaddr_t)toc % ALIGNOF_BUFFER) != 0) {
+		elog(ERROR, "Attempting to create a toc at address %p with size %zd, which is not aligned!", address, nbytes);
+		return NULL;
+	}
+	/*
+	 * CHERI CHANGES START
+	 * {
+	 *   "updated": 20180728,
+	 *   "changes": [
+	 *     "pointer_alignment",
+	 *   ],
+	 *   "change_comment": "Storing pointers in underaligned shared memory segment",
+	 *   "hybrid_specific": false
+	 * }
+	 * CHERI CHANGES END
+	 */
 	return toc;
 }
 
@@ -65,6 +90,9 @@ shm_toc_attach(uint64 magic, void *address)
 
 	Assert(toc->toc_total_bytes >= toc->toc_allocated_bytes);
 	Assert(toc->toc_total_bytes >= offsetof(shm_toc, toc_entry));
+
+	Assert(((pg_vaddr_t)toc % ALIGNOF_BUFFER) == 0);
+	Assert(((pg_vaddr_t)toc->toc_total_bytes % ALIGNOF_BUFFER) == 0);
 
 	return toc;
 }
@@ -99,6 +127,9 @@ shm_toc_allocate(shm_toc *toc, Size nbytes)
 	toc_bytes = offsetof(shm_toc, toc_entry) +nentry * sizeof(shm_toc_entry)
 		+ allocated_bytes;
 
+
+	// TODO: this should
+
 	/* Check for memory exhaustion and overflow. */
 	if (toc_bytes + nbytes > total_bytes || toc_bytes + nbytes < toc_bytes)
 	{
@@ -110,8 +141,14 @@ shm_toc_allocate(shm_toc *toc, Size nbytes)
 	vtoc->toc_allocated_bytes += nbytes;
 
 	SpinLockRelease(&toc->toc_mutex);
+	Assert(((pg_vaddr_t)vtoc->toc_total_bytes % ALIGNOF_BUFFER) == 0);
+	Assert(((pg_vaddr_t)vtoc->toc_allocated_bytes % ALIGNOF_BUFFER) == 0);
+	Assert(((pg_vaddr_t)nbytes % ALIGNOF_BUFFER) == 0);
+	Assert(((pg_vaddr_t)toc % ALIGNOF_BUFFER) == 0);
 
-	return ((char *) toc) + (total_bytes - allocated_bytes - nbytes);
+	char* result = ((char *) toc) + (total_bytes - allocated_bytes - nbytes);
+	Assert(((pg_vaddr_t)result % ALIGNOF_BUFFER) == 0);
+	return result;
 }
 
 /*
@@ -240,7 +277,23 @@ shm_toc_lookup(shm_toc *toc, uint64 key)
 Size
 shm_toc_estimate(shm_toc_estimator *e)
 {
-	return add_size(offsetof(shm_toc, toc_entry),
+	Size result = add_size(offsetof(shm_toc, toc_entry),
 				 add_size(mul_size(e->number_of_keys, sizeof(shm_toc_entry)),
 						  e->space_for_chunks));
+	/* Since the shm_toc code allocates from the back we need to ensure that
+	 * the size is correctly aligned:
+	 */
+	return BUFFERALIGN(result);
+	/*
+	 * CHERI CHANGES START
+	 * {
+	 *   "updated": 20180728,
+	 *   "changes": [
+	 *     "pointer_alignment",
+	 *   ],
+	 *   "change_comment": "When allocating from the back of a memory region not just the base needs to be aligned but also the size!",
+	 *   "hybrid_specific": false
+	 * }
+	 * CHERI CHANGES END
+	 */
 }
