@@ -80,6 +80,7 @@ static bool dsm_impl_sysv(dsm_op op, dsm_handle handle, Size request_size,
 			  Size *mapped_size, int elevel);
 #endif
 #ifdef USE_DSM_WINDOWS
+#error "this may not align correctly"
 static bool dsm_impl_windows(dsm_op op, dsm_handle handle, Size request_size,
 				 void **impl_private, void **mapped_address,
 				 Size *mapped_size, int elevel);
@@ -581,6 +582,7 @@ dsm_impl_sysv(dsm_op op, dsm_handle handle, Size request_size,
 						name)));
 		return false;
 	}
+	Assert(((pg_vaddr_t)address % ALIGNOF_BUFFER) == 0);
 	*mapped_address = address;
 	*mapped_size = request_size;
 
@@ -986,6 +988,7 @@ dsm_impl_mmap(dsm_op op, dsm_handle handle, Size request_size,
 						name)));
 		return false;
 	}
+	Assert(((pg_vaddr_t)address % ALIGNOF_BUFFER) == 0);
 	*mapped_address = address;
 	*mapped_size = request_size;
 	CloseTransientFile(fd);
