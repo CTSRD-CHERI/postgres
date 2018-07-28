@@ -46,7 +46,7 @@
 extern PATH *poly2path(POLYGON *poly);
 extern void regress_lseg_construct(LSEG *lseg, Point *pt1, Point *pt2);
 extern char *reverse_name(char *string);
-extern int	oldstyle_length(int n, text *t);
+extern intptr_t	oldstyle_length(intptr_t n, text *t);
 
 #ifdef PG_MODULE_MAGIC
 PG_MODULE_MAGIC;
@@ -327,8 +327,21 @@ reverse_name(char *string)
  * This rather silly function is just to test that oldstyle functions
  * work correctly on toast-able inputs.
  */
-int
-oldstyle_length(int n, text *t)
+// FIXME: this does not work for CHERI (unless all args are pointers)
+/*
+ * CHERI CHANGES START
+ * {
+ *   "updated": 20180728,
+ *   "changes": [
+ *     "function_abi",
+ *   ],
+ *   "change_comment": "Converted args to intprt_t to allow calling from fmgr.c. See comment in fmgr.c. To avoid more errors disabled old-style fmgr API instead.",
+ *   "hybrid_specific": false
+ * }
+ * CHERI CHANGES END
+ */
+intptr_t
+oldstyle_length(intptr_t n, text *t)
 {
 	int			len = 0;
 
