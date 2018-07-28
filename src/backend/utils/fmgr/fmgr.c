@@ -55,6 +55,7 @@ PGDLLIMPORT fmgr_hook_type fmgr_hook = NULL;
 #if (defined(__mc68000__) || (defined(__m68k__))) && defined(__ELF__)
 typedef int32 (*func_ptr) ();
 #else
+// FIXME: this is just asking for trouble (it really won't work -> we should disable OLDSTYLE FUNCTIONS)
 typedef char *(*func_ptr) ();
 #endif
 
@@ -363,6 +364,7 @@ fmgr_info_C_lang(Oid functionId, FmgrInfo *finfo, HeapTuple procedureTuple)
 
 	switch (inforec->api_version)
 	{
+
 		case 0:
 			/* Old style: need to use a handler */
 			finfo->fn_addr = fmgr_oldstyle;
@@ -376,6 +378,19 @@ fmgr_info_C_lang(Oid functionId, FmgrInfo *finfo, HeapTuple procedureTuple)
 				fnextra->arg_toastable[i] =
 					TypeIsToastable(procedureStruct->proargtypes.values[i]);
 			}
+			elog(ERROR, "oldstyle function API will almost certainly crash unless the function only accepts pointer args");
+			/*
+			 * CHERI CHANGES START
+			 * {
+			 *   "updated": 20180728,
+			 *   "changes": [
+			 *     "function_abi",
+			 *   ],
+			 *   "change_comment": "Calling arbitraty C functions and passing all arguments __uintptr_t, expecting return value to be __uintptr_t will not work since integers are passed in different registers. This caused one of the tests to crash",
+			 *   "hybrid_specific": false
+			 * }
+			 * CHERI CHANGES END
+			 */
 			break;
 		case 1:
 			/* New style: call directly */
