@@ -1345,12 +1345,18 @@ AllocSetCheck(MemoryContext context)
 		/*
 		 * Check block header fields
 		 */
-		if (block->aset != set ||
-			block->prev != prevblock ||
-			block->freeptr < bpoz ||
-			block->freeptr > block->endptr)
-			elog(WARNING, "problem in alloc set %s: corrupt header in block %p",
-				 name, block);
+		if (block->aset != set)
+			elog(WARNING, "problem in alloc set %s: corrupt header in block %p: block->aset (%#p) != set (%#p)",
+				 name, block, block->aset, set);
+		if (block->prev != prevblock)
+			elog(WARNING, "problem in alloc set %s: corrupt header in block %p: block->prev (%#p) != prevblock (%#p)",
+				 name, block, block->prev, prevblock);
+		if (block->freeptr < bpoz)
+			elog(WARNING, "problem in alloc set %s: corrupt header in block %p: block->aset block->freeptr (%#p) < bpoz (%#p)",
+				 name, block, block->freeptr, bpoz);
+		if (block->freeptr > block->endptr)
+			elog(WARNING, "problem in alloc set %s: corrupt header in block %p: block->freeptr (%#p) > block->endptr (%#p)",
+				 name, block, block->freeptr, block->endptr);
 
 		/*
 		 * Chunk walker
