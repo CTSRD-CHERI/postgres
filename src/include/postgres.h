@@ -276,6 +276,7 @@ typedef struct
 	(VARSIZE(PTR) - VARHDRSZ + VARHDRSZ_SHORT)
 
 #define VARHDRSZ_EXTERNAL		offsetof(varattrib_1b_e, va_data)
+_Static_assert((VARHDRSZ_EXTERNAL % sizeof(void*)) == 0, "");
 
 #define VARDATA_4B(PTR)		(((varattrib_4b *) (PTR))->va_4byte.va_data)
 #define VARDATA_4B_C(PTR)	(((varattrib_4b *) (PTR))->va_compressed.va_data)
