@@ -11,7 +11,8 @@ POSTGRES_INSTANCE="${OUTPUT_ROOT}/postgres-test-cheri/instance"
 POSTGRES_DATA="${POSTGRES_INSTANCE}/data"
 OUTPUT_DIR="${OUTPUT_ROOT}/postgres-test-cheri/output"
 
-SCHEDULE_NAME=${SCHEDULE_NAME:-parallel_schedule}
+#SCHEDULE_NAME=${SCHEDULE_NAME:-parallel_schedule}
+SCHEDULE_NAME=${SCHEDULE_NAME:-serial_schedule}
 
 POSTGRES="${POSTGRES_ROOT}/bin/postgres"
 INITDB="${POSTGRES_ROOT}/bin/initdb"
