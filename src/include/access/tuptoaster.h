@@ -89,7 +89,7 @@
 #define EXTERN_TUPLE_MAX_SIZE	MaximumBytesPerTuple(EXTERN_TUPLES_PER_PAGE)
 
 #define TOAST_MAX_CHUNK_SIZE	\
-	(EXTERN_TUPLE_MAX_SIZE -							\
+	MAXALIGN_DOWN(EXTERN_TUPLE_MAX_SIZE -							\
 	 MAXALIGN(SizeofHeapTupleHeader) -					\
 	 sizeof(Oid) -										\
 	 sizeof(int32) -									\
@@ -97,9 +97,11 @@
 
 /* Size of an EXTERNAL datum that contains a standard TOAST pointer */
 #define TOAST_POINTER_SIZE (VARHDRSZ_EXTERNAL + sizeof(varatt_external))
+_Static_assert(TOAST_POINTER_SIZE % sizeof(void*) == 0, "");
 
 /* Size of an EXTERNAL datum that contains an indirection pointer */
 #define INDIRECT_POINTER_SIZE (VARHDRSZ_EXTERNAL + sizeof(varatt_indirect))
+_Static_assert(INDIRECT_POINTER_SIZE % sizeof(void*) == 0, "");
 
 /*
  * Testing whether an externally-stored value is compressed now requires
