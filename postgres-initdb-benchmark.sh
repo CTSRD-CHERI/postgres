@@ -31,6 +31,14 @@ else
 	file "${POSTGRES}"
 fi
 
+if ! command -v ldd > /dev/null; then
+    ldd "${INITDB}"
+fi
+export LD_LIBRARY_PATH="${POSTGRES_ROOT}/lib"
+if ! command -v ldd > /dev/null; then
+    ldd "${INITDB}"
+fi
+
 export STATCOUNTERS_FORMAT=csv
 export STATCOUNTERS_OUTPUT="/tmp/postgres.statcounters.csv"
 
