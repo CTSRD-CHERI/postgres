@@ -44,7 +44,6 @@ else
 fi
 
 echo "${0}: running benchmark ${NTIMES} times..."
-${PGBENCH} -i postgres
 if command -v jot 2>/dev/null ; then
 	BENCHCOUNT="$(jot ${NTIMES})"
 elif command -v seq 2>/dev/null ; then
