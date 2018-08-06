@@ -6,7 +6,7 @@ POSTGRES="${POSTGRES_ROOT}/bin/postgres"
 INITDB="${POSTGRES_ROOT}/bin/initdb"
 PGCTL="${POSTGRES_ROOT}/bin/pg_ctl"
 PGBENCH="${POSTGRES_ROOT}/bin/pgbench"
-NTIMES=5
+NTIMESi=10
 
 if test "`whoami`" = "root"; then
 	if ! pw user show postgres -q > /dev/null; then
@@ -49,7 +49,7 @@ if command -v jot 2>/dev/null ; then
 elif command -v seq 2>/dev/null ; then
 	BENCHCOUNT="$(seq ${NTIMES})"
 else
-	BENCHCOUNT="1 2 3 4 5"
+	BENCHCOUNT="1 2 3 4 5 6 7 8 9 10"
 fi
 
 for i in $BENCHCOUNT; do
