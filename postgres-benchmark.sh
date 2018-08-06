@@ -57,7 +57,7 @@ else
 fi
 
 for i in $BENCHCOUNT; do
-	${PGBENCH} -c 2 -T 180 postgres 2>&1 | tee /tmp/pgbench-results.txt
+	${PGBENCH} -c 1 -T 180 postgres 2>&1 | tee /tmp/pgbench-results.txt
 done
 
 echo "${0}: stopping postgres..."
