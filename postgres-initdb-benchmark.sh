@@ -6,7 +6,7 @@ POSTGRES="${POSTGRES_ROOT}/bin/postgres"
 INITDB="${POSTGRES_ROOT}/bin/initdb"
 PGCTL="${POSTGRES_ROOT}/bin/pg_ctl"
 PGBENCH="${POSTGRES_ROOT}/bin/pgbench"
-NTIMESi=10
+NTIMES=10
 
 if test "`whoami`" = "root"; then
 	if ! pw user show postgres -q > /dev/null; then
