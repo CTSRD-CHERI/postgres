@@ -68,16 +68,16 @@ extern PGDLLIMPORT MemoryContext CurrentMemoryContext;
 /*
  * Fundamental memory-allocation operations (more are in utils/memutils.h)
  */
-extern void *MemoryContextAlloc(MemoryContext context, Size size);
-extern void *MemoryContextAllocZero(MemoryContext context, Size size);
-extern void *MemoryContextAllocZeroAligned(MemoryContext context, Size size);
+extern void *MemoryContextAlloc(MemoryContext context, Size size) __attribute__((alloc_size(2)));
+extern void *MemoryContextAllocZero(MemoryContext context, Size size) __attribute__((alloc_size(2)));
+extern void *MemoryContextAllocZeroAligned(MemoryContext context, Size size) __attribute__((alloc_size(2)));
 extern void *MemoryContextAllocExtended(MemoryContext context,
-						   Size size, int flags);
+						   Size size, int flags) __attribute__((alloc_size(2)));
 
-extern void *palloc(Size size);
-extern void *palloc0(Size size);
-extern void *palloc_extended(Size size, int flags);
-extern void *repalloc(void *pointer, Size size);
+extern void *palloc(Size size) __attribute__((alloc_size(1)));
+extern void *palloc0(Size size) __attribute__((alloc_size(1)));
+extern void *palloc_extended(Size size, int flags) __attribute__((alloc_size(1)));
+extern void *repalloc(void *pointer, Size size) __attribute__((alloc_size(2)));
 extern void pfree(void *pointer);
 
 /*
@@ -94,8 +94,8 @@ extern void pfree(void *pointer);
 		MemoryContextAllocZero(CurrentMemoryContext, sz) )
 
 /* Higher-limit allocators. */
-extern void *MemoryContextAllocHuge(MemoryContext context, Size size);
-extern void *repalloc_huge(void *pointer, Size size);
+extern void *MemoryContextAllocHuge(MemoryContext context, Size size) __attribute__((alloc_size(2)));
+extern void *repalloc_huge(void *pointer, Size size) __attribute__((alloc_size(2)));
 
 /*
  * Although this header file is nominally backend-only, certain frontend
