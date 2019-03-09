@@ -694,7 +694,9 @@ PGSharedMemoryCreate(Size size, bool makePrivate, int port,
 #ifdef USE_ANONYMOUS_SHMEM
 	if (AnonymousShmem == NULL)
 		return hdr;
-	memcpy(AnonymousShmem, hdr, sizeof(PGShmemHeader));
+	/* XXXAR: allow CHERI-clang to inline the memcpy by asserting alignment */
+	AssertPointerAlignment(AnonymousShmem, sizeof(uintptr_t));
+	memcpy((PGShmemHeader *)AnonymousShmem, hdr, sizeof(PGShmemHeader));
 	return (PGShmemHeader *) AnonymousShmem;
 #else
 	return hdr;
