@@ -524,8 +524,13 @@ typedef NameData *Name;
  * PointerIsAligned
  *		True iff pointer is properly aligned to point to the given type.
  */
+#if __has_builtin(__builtin_is_aligned)
+#define PointerIsAlignedTo(ptr, align) __builtin_is_aligned(ptr, align)
+#else
+#define PointerIsAlignedTo(ptr, align) ((((pg_vaddr_t)(void*)(ptr)) % (align)) == 0)
+#endif
 #define PointerIsAligned(pointer, type) \
-		(((uintptr_t)(pointer) % (sizeof (type))) == 0)
+		PointerIsAlignedTo(pointer, sizeof(type))
 
 #define OidIsValid(objectId)  ((bool) ((objectId) != InvalidOid))
 
@@ -689,7 +694,7 @@ typedef NameData *Name;
 #define AssertMacro(p)	((void) assert(p))
 #define AssertArg(condition) assert(condition)
 #define AssertState(condition) assert(condition)
-#define AssertPointerAlignment(ptr, bndr)	((void)true)
+#define AssertPointerAlignment(ptr, bndr)	assert(PointerIsAlignedTo(ptr, bndr))
 #else							/* USE_ASSERT_CHECKING && !FRONTEND */
 
 /*
@@ -731,8 +736,7 @@ typedef NameData *Name;
  * Check that `ptr' is `bndr' aligned.
  */
 #define AssertPointerAlignment(ptr, bndr) \
-	Trap(TYPEALIGN(bndr, (uintptr_t)(ptr)) != (uintptr_t)(ptr), \
-		 "UnalignedPointer")
+	Trap(!PointerIsAlignedTo(ptr, bndr), "UnalignedPointer")
 
 #endif   /* USE_ASSERT_CHECKING && !FRONTEND */
 
