@@ -459,6 +459,11 @@ CreateAnonymousSegment(Size *size)
 	void	   *ptr = MAP_FAILED;
 	int			mmap_errno = 0;
 
+#ifdef __CHERI_PURE_CAPABILITY__
+	/* Ensure the size is representable for CHERI128 */
+	allocsize = __builtin_align_up(allocsize, 1ULL << CHERI_ALIGN_SHIFT(allocsize));
+#endif
+
 #ifndef MAP_HUGETLB
 	/* PGSharedMemoryCreate should have dealt with this case */
 	Assert(huge_pages != HUGE_PAGES_ON);
