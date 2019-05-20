@@ -8,7 +8,7 @@ PGCTL="${POSTGRES_ROOT}/bin/pg_ctl"
 PGBENCH="${POSTGRES_ROOT}/bin/pgbench"
 NTIMES=10
 
-if test "`whoami`" = "root"; then
+if test "$(whoami)" = "root"; then
 	if ! pw user show postgres -q > /dev/null; then
 		echo "${0}: user \"postgres\" does not exist, adding..."
 		pw useradd -n postgres -c "Postgres test account" -s /bin/csh -m -w none
@@ -59,6 +59,9 @@ elif command -v seq 2>/dev/null ; then
 else
 	BENCHCOUNT="1 2 3 4 5 6 7 8 9 10"
 fi
+
+# MIPS binaries do not support lazy binding -> disable it for CheriABI for a fair comparison
+export LD_CHERI_BIND_NOW=1
 
 for i in $BENCHCOUNT; do
 	${INITDB} -D "${POSTGRES_DATA}" --noclean --nosync --no-locale "$@"
