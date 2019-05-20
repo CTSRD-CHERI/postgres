@@ -39,6 +39,9 @@ if ! command -v ldd > /dev/null; then
     ldd "${INITDB}"
 fi
 
+# MIPS binaries do not support lazy binding -> disable it for CheriABI for a fair comparison
+export LD_CHERI_BIND_NOW=1
+
 export STATCOUNTERS_FORMAT=csv
 export STATCOUNTERS_OUTPUT="/tmp/postgres.statcounters.csv"
 
