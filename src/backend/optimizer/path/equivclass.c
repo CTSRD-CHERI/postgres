@@ -424,8 +424,9 @@ canonicalize_ec_expression(Expr *expr, Oid req_type, Oid req_collation)
 
 	/*
 	 * For a polymorphic-input-type opclass, just keep the same exposed type.
+	 * RECORD opclasses work like polymorphic-type ones for this purpose.
 	 */
-	if (IsPolymorphicType(req_type))
+	if (IsPolymorphicType(req_type) || req_type == RECORDOID)
 		req_type = expr_type;
 
 	/*
@@ -1961,6 +1962,14 @@ match_eclasses_to_foreign_key_col(PlannerInfo *root,
 		if (ec->ec_has_volatile)
 			continue;
 		/* Note: it seems okay to match to "broken" eclasses here */
+
+		/*
+		 * If eclass visibly doesn't have members for both rels, there's no
+		 * need to grovel through the members.
+		 */
+		if (!bms_is_member(var1varno, ec->ec_relids) ||
+			!bms_is_member(var2varno, ec->ec_relids))
+			continue;
 
 		foreach(lc2, ec->ec_members)
 		{

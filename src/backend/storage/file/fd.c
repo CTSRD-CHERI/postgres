@@ -138,6 +138,8 @@ int			max_files_per_process = 1000;
  */
 int			max_safe_fds = 32;	/* default if not changed */
 
+/* Whether it is safe to continue running after fsync() fails. */
+bool		data_sync_retry = false;
 
 /* Debugging.... */
 
@@ -304,7 +306,6 @@ static int	FileAccess(File file);
 static File OpenTemporaryFileInTablespace(Oid tblspcOid, bool rejectError);
 static bool reserveAllocatedDesc(void);
 static int	FreeDesc(AllocateDesc *desc);
-static struct dirent *ReadDirExtended(DIR *dir, const char *dirname, int elevel);
 
 static void AtProcExit_Files(int code, Datum arg);
 static void CleanupTempFiles(bool isProcExit);
@@ -422,6 +423,10 @@ pg_flush_data(int fd, off_t offset, off_t nbytes)
 #if defined(HAVE_SYNC_FILE_RANGE)
 	{
 		int			rc;
+		static bool not_implemented_by_kernel = false;
+
+		if (not_implemented_by_kernel)
+			return;
 
 		/*
 		 * sync_file_range(SYNC_FILE_RANGE_WRITE), currently linux specific,
@@ -434,11 +439,24 @@ pg_flush_data(int fd, off_t offset, off_t nbytes)
 		 */
 		rc = sync_file_range(fd, offset, nbytes,
 							 SYNC_FILE_RANGE_WRITE);
-
-		/* don't error out, this is just a performance optimization */
 		if (rc != 0)
 		{
-			ereport(WARNING,
+			int			elevel;
+
+			/*
+			 * For systems that don't have an implementation of
+			 * sync_file_range() such as Windows WSL, generate only one
+			 * warning and then suppress all further attempts by this process.
+			 */
+			if (errno == ENOSYS)
+			{
+				elevel = WARNING;
+				not_implemented_by_kernel = true;
+			}
+			else
+				elevel = data_sync_elevel(WARNING);
+
+			ereport(elevel,
 					(errcode_for_file_access(),
 					 errmsg("could not flush dirty data: %m")));
 		}
@@ -510,7 +528,7 @@ pg_flush_data(int fd, off_t offset, off_t nbytes)
 			rc = msync(p, (size_t) nbytes, MS_ASYNC);
 			if (rc != 0)
 			{
-				ereport(WARNING,
+				ereport(data_sync_elevel(WARNING),
 						(errcode_for_file_access(),
 						 errmsg("could not flush dirty data: %m")));
 				/* NB: need to fall through to munmap()! */
@@ -566,7 +584,7 @@ pg_flush_data(int fd, off_t offset, off_t nbytes)
 void
 fsync_fname(const char *fname, bool isdir)
 {
-	fsync_fname_ext(fname, isdir, false, ERROR);
+	fsync_fname_ext(fname, isdir, false, data_sync_elevel(ERROR));
 }
 
 /*
@@ -995,7 +1013,8 @@ LruDelete(File file)
 	 * to leak the FD than to mess up our internal state.
 	 */
 	if (close(vfdP->fd))
-		elog(LOG, "could not close file \"%s\": %m", vfdP->fileName);
+		elog(vfdP->fdstate & FD_TEMPORARY ? LOG : data_sync_elevel(LOG),
+			 "could not close file \"%s\": %m", vfdP->fileName);
 	vfdP->fd = VFD_CLOSED;
 	--nfile;
 
@@ -1336,6 +1355,13 @@ OpenTemporaryFile(bool interXact)
 	File		file = 0;
 
 	/*
+	 * Make sure the current resource owner has space for this File before we
+	 * open it, if we'll be registering it below.
+	 */
+	if (!interXact)
+		ResourceOwnerEnlargeFiles(CurrentResourceOwner);
+
+	/*
 	 * If some temp tablespace(s) have been given to us, try to use the next
 	 * one.  If a given tablespace can't be found, we silently fall back to
 	 * the database's default tablespace.
@@ -1371,9 +1397,8 @@ OpenTemporaryFile(bool interXact)
 	{
 		VfdCache[file].fdstate |= FD_XACT_TEMPORARY;
 
-		ResourceOwnerEnlargeFiles(CurrentResourceOwner);
-		ResourceOwnerRememberFile(CurrentResourceOwner, file);
 		VfdCache[file].resowner = CurrentResourceOwner;
+		ResourceOwnerRememberFile(CurrentResourceOwner, file);
 
 		/* ensure cleanup happens at eoxact */
 		have_xact_temporary_files = true;
@@ -1468,7 +1493,14 @@ FileClose(File file)
 	{
 		/* close the file */
 		if (close(vfdP->fd))
-			elog(LOG, "could not close file \"%s\": %m", vfdP->fileName);
+		{
+			/*
+			 * We may need to panic on failure to close non-temporary files;
+			 * see LruDelete.
+			 */
+			elog(vfdP->fdstate & FD_TEMPORARY ? LOG : data_sync_elevel(LOG),
+				"could not close file \"%s\": %m", vfdP->fileName);
+		}
 
 		--nfile;
 		vfdP->fd = VFD_CLOSED;
@@ -2278,6 +2310,10 @@ CloseTransientFile(int fd)
  * necessary to open the directory, and with closing it after an elog.
  * When done, call FreeDir rather than closedir.
  *
+ * Returns NULL, with errno set, on failure.  Note that failure detection
+ * is commonly left to the following call of ReadDir or ReadDirExtended;
+ * see the comments for ReadDir.
+ *
  * Ideally this should be the *only* direct call of opendir() in the backend.
  */
 DIR *
@@ -2340,8 +2376,8 @@ TryAgain:
  *		FreeDir(dir);
  *
  * since a NULL dir parameter is taken as indicating AllocateDir failed.
- * (Make sure errno hasn't been changed since AllocateDir if you use this
- * shortcut.)
+ * (Make sure errno isn't changed between AllocateDir and ReadDir if you
+ * use this shortcut.)
  *
  * The pathname passed to AllocateDir must be passed to this routine too,
  * but it is only used for error reporting.
@@ -2353,10 +2389,15 @@ ReadDir(DIR *dir, const char *dirname)
 }
 
 /*
- * Alternate version that allows caller to specify the elevel for any
- * error report.  If elevel < ERROR, returns NULL on any error.
+ * Alternate version of ReadDir that allows caller to specify the elevel
+ * for any error report (whether it's reporting an initial failure of
+ * AllocateDir or a subsequent directory read failure).
+ *
+ * If elevel < ERROR, returns NULL after any error.  With the normal coding
+ * pattern, this will result in falling out of the loop immediately as
+ * though the directory contained no (more) entries.
  */
-static struct dirent *
+struct dirent *
 ReadDirExtended(DIR *dir, const char *dirname, int elevel)
 {
 	struct dirent *dent;
@@ -2386,13 +2427,21 @@ ReadDirExtended(DIR *dir, const char *dirname, int elevel)
 /*
  * Close a directory opened with AllocateDir.
  *
- * Note we do not check closedir's return value --- it is up to the caller
- * to handle close errors.
+ * Returns closedir's return value (with errno set if it's not 0).
+ * Note we do not check the return value --- it is up to the caller
+ * to handle close errors if wanted.
+ *
+ * Does nothing if dir == NULL; we assume that directory open failure was
+ * already reported if desired.
  */
 int
 FreeDir(DIR *dir)
 {
 	int			i;
+
+	/* Nothing to do if AllocateDir failed */
+	if (dir == NULL)
+		return 0;
 
 	DO_DB(elog(LOG, "FreeDir: Allocated %d", numAllocatedDescs));
 
@@ -2876,6 +2925,9 @@ looks_like_temp_rel_name(const char *name)
  * harmless cases such as read-only files in the data directory, and that's
  * not good either.
  *
+ * Note that if we previously crashed due to a PANIC on fsync(), we'll be
+ * rewriting all changes again during recovery.
+ *
  * Note we assume we're chdir'd into PGDATA to begin with.
  */
 void
@@ -3115,7 +3167,7 @@ fsync_fname_ext(const char *fname, bool isdir, bool ignore_perm, int elevel)
 	 * Some OSes don't allow us to fsync directories at all, so we can ignore
 	 * those errors. Anything else needs to be logged.
 	 */
-	if (returncode != 0 && !(isdir && errno == EBADF))
+	if (returncode != 0 && !(isdir && (errno == EBADF || errno == EINVAL)))
 	{
 		int			save_errno;
 
@@ -3161,4 +3213,27 @@ fsync_parent_path(const char *fname, int elevel)
 		return -1;
 
 	return 0;
+}
+
+/*
+ * Return the passed-in error level, or PANIC if data_sync_retry is off.
+ *
+ * Failure to fsync any data file is cause for immediate panic, unless
+ * data_sync_retry is enabled.  Data may have been written to the operating
+ * system and removed from our buffer pool already, and if we are running on
+ * an operating system that forgets dirty data on write-back failure, there
+ * may be only one copy of the data remaining: in the WAL.  A later attempt to
+ * fsync again might falsely report success.  Therefore we must not allow any
+ * further checkpoints to be attempted.  data_sync_retry can in theory be
+ * enabled on systems known not to drop dirty buffered data on write-back
+ * failure (with the likely outcome that checkpoints will continue to fail
+ * until the underlying problem is fixed).
+ *
+ * Any code that reports a failure from fsync() or related functions should
+ * filter the error level with this function.
+ */
+int
+data_sync_elevel(int elevel)
+{
+	return data_sync_retry ? elevel : PANIC;
 }

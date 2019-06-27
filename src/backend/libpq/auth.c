@@ -697,6 +697,20 @@ recv_password_packet(Port *port)
 				(errcode(ERRCODE_PROTOCOL_VIOLATION),
 				 errmsg("invalid password packet size")));
 
+	/*
+	 * Don't allow an empty password. Libpq treats an empty password the same
+	 * as no password at all, and won't even try to authenticate. But other
+	 * clients might, so allowing it would be confusing.
+	 *
+	 * Note that this only catches an empty password sent by the client in
+	 * plaintext. There's another check in md5_crypt_verify to prevent an
+	 * empty password from being used with MD5 authentication.
+	 */
+	if (buf.data[0] == '\0')
+		ereport(ERROR,
+				(errcode(ERRCODE_INVALID_PASSWORD),
+				 errmsg("empty password returned by client")));
+
 	/* Do not echo password to logs, for security. */
 	elog(DEBUG5, "received password packet");
 
@@ -757,6 +771,10 @@ static GSS_DLLIMP gss_OID GSS_C_NT_USER_NAME = &GSS_C_NT_USER_NAME_desc;
 #endif
 
 
+/*
+ * Generate an error for GSSAPI authentication.  The caller should apply
+ * _() to errmsg to make it translatable.
+ */
 static void
 pg_GSS_error(int severity, char *errmsg, OM_uint32 maj_stat, OM_uint32 min_stat)
 {
@@ -946,7 +964,7 @@ pg_GSS_recvauth(Port *port)
 		{
 			gss_delete_sec_context(&lmin_s, &port->gss->ctx, GSS_C_NO_BUFFER);
 			pg_GSS_error(ERROR,
-					   gettext_noop("accepting GSS security context failed"),
+						 _("accepting GSS security context failed"),
 						 maj_stat, min_stat);
 		}
 
@@ -972,7 +990,7 @@ pg_GSS_recvauth(Port *port)
 	maj_stat = gss_display_name(&min_stat, port->gss->name, &gbuf, NULL);
 	if (maj_stat != GSS_S_COMPLETE)
 		pg_GSS_error(ERROR,
-					 gettext_noop("retrieving GSS user name failed"),
+					 _("retrieving GSS user name failed"),
 					 maj_stat, min_stat);
 
 	/*
@@ -1036,6 +1054,11 @@ pg_GSS_recvauth(Port *port)
  *----------------------------------------------------------------
  */
 #ifdef ENABLE_SSPI
+
+/*
+ * Generate an error for SSPI authentication.  The caller should apply
+ * _() to errmsg to make it translatable.
+ */
 static void
 pg_SSPI_error(int severity, const char *errmsg, SECURITY_STATUS r)
 {
@@ -1738,10 +1761,12 @@ auth_peer(hbaPort *port)
 	pw = getpwuid(uid);
 	if (!pw)
 	{
+		int			save_errno = errno;
+
 		ereport(LOG,
 				(errmsg("could not look up local user ID %ld: %s",
 						(long) uid,
-						errno ? strerror(errno) : _("user does not exist"))));
+						save_errno ? strerror(save_errno) : _("user does not exist"))));
 		return STATUS_ERROR;
 	}
 
@@ -1820,12 +1845,6 @@ pam_passwd_conv_proc(int num_msg, const struct pam_message ** msg,
 						 */
 						goto fail;
 					}
-					if (strlen(passwd) == 0)
-					{
-						ereport(LOG,
-							  (errmsg("empty password returned by client")));
-						goto fail;
-					}
 				}
 				if ((reply[i].resp = strdup(passwd)) == NULL)
 					goto fail;
@@ -1874,18 +1893,6 @@ CheckPAMAuth(Port *port, char *user, char *password)
 {
 	int			retval;
 	pam_handle_t *pamh = NULL;
-	char		hostinfo[NI_MAXHOST];
-
-	retval = pg_getnameinfo_all(&port->raddr.addr, port->raddr.salen,
-								hostinfo, sizeof(hostinfo), NULL, 0,
-		  port->hba->pam_use_hostname ? 0 : NI_NUMERICHOST | NI_NUMERICSERV);
-	if (retval != 0)
-	{
-		ereport(WARNING,
-				(errmsg_internal("pg_getnameinfo_all() failed: %s",
-								 gai_strerror(retval))));
-		return STATUS_ERROR;
-	}
 
 	/*
 	 * We can't entirely rely on PAM to pass through appdata --- it appears
@@ -1931,15 +1938,37 @@ CheckPAMAuth(Port *port, char *user, char *password)
 		return STATUS_ERROR;
 	}
 
-	retval = pam_set_item(pamh, PAM_RHOST, hostinfo);
-
-	if (retval != PAM_SUCCESS)
+	if (port->hba->conntype != ctLocal)
 	{
-		ereport(LOG,
-				(errmsg("pam_set_item(PAM_RHOST) failed: %s",
-						pam_strerror(pamh, retval))));
-		pam_passwd = NULL;
-		return STATUS_ERROR;
+		char		hostinfo[NI_MAXHOST];
+		int			flags;
+
+		if (port->hba->pam_use_hostname)
+			flags = 0;
+		else
+			flags = NI_NUMERICHOST | NI_NUMERICSERV;
+
+		retval = pg_getnameinfo_all(&port->raddr.addr, port->raddr.salen,
+									hostinfo, sizeof(hostinfo), NULL, 0,
+									flags);
+		if (retval != 0)
+		{
+			ereport(WARNING,
+					(errmsg_internal("pg_getnameinfo_all() failed: %s",
+									 gai_strerror(retval))));
+			return STATUS_ERROR;
+		}
+
+		retval = pam_set_item(pamh, PAM_RHOST, hostinfo);
+
+		if (retval != PAM_SUCCESS)
+		{
+			ereport(LOG,
+					(errmsg("pam_set_item(PAM_RHOST) failed: %s",
+							pam_strerror(pamh, retval))));
+			pam_passwd = NULL;
+			return STATUS_ERROR;
+		}
 	}
 
 	retval = pam_set_item(pamh, PAM_CONV, &pam_passw_conv);
@@ -2146,16 +2175,11 @@ CheckLDAPAuth(Port *port)
 	if (passwd == NULL)
 		return STATUS_EOF;		/* client wouldn't send password */
 
-	if (strlen(passwd) == 0)
-	{
-		ereport(LOG,
-				(errmsg("empty password returned by client")));
-		return STATUS_ERROR;
-	}
-
 	if (InitializeLDAPConnection(port, &ldap) == STATUS_ERROR)
+	{
 		/* Error message already sent */
 		return STATUS_ERROR;
+	}
 
 	if (port->hba->ldapbasedn)
 	{
@@ -2202,7 +2226,8 @@ CheckLDAPAuth(Port *port)
 		{
 			ereport(LOG,
 					(errmsg("could not perform initial LDAP bind for ldapbinddn \"%s\" on server \"%s\": %s",
-							port->hba->ldapbinddn, port->hba->ldapserver, ldap_err2string(r))));
+							port->hba->ldapbinddn ? port->hba->ldapbinddn : "",
+							port->hba->ldapserver, ldap_err2string(r))));
 			return STATUS_ERROR;
 		}
 
@@ -2508,13 +2533,6 @@ CheckRADIUSAuth(Port *port)
 	passwd = recv_password_packet(port);
 	if (passwd == NULL)
 		return STATUS_EOF;		/* client wouldn't send password */
-
-	if (strlen(passwd) == 0)
-	{
-		ereport(LOG,
-				(errmsg("empty password returned by client")));
-		return STATUS_ERROR;
-	}
 
 	if (strlen(passwd) > RADIUS_MAX_PASSWORD_LENGTH)
 	{

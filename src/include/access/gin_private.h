@@ -13,6 +13,7 @@
 #include "access/amapi.h"
 #include "access/gin.h"
 #include "access/itup.h"
+#include "access/transam.h"
 #include "fmgr.h"
 #include "storage/bufmgr.h"
 #include "lib/rbtree.h"
@@ -130,6 +131,15 @@ typedef struct GinMetaPageData
 #define GinPageIsIncompleteSplit(page) ( (GinPageGetOpaque(page)->flags & GIN_INCOMPLETE_SPLIT) != 0 )
 
 #define GinPageRightMost(page) ( GinPageGetOpaque(page)->rightlink == InvalidBlockNumber)
+
+/*
+ * We should reclaim deleted page only once every transaction started before
+ * its deletion is over.
+ */
+#define GinPageGetDeleteXid(page) ( ((PageHeader) (page))->pd_prune_xid )
+#define GinPageSetDeleteXid(page, xid) ( ((PageHeader) (page))->pd_prune_xid = xid)
+#define GinPageIsRecyclable(page) ( PageIsNew(page) || (GinPageIsDeleted(page) \
+	&& TransactionIdPrecedes(GinPageGetDeleteXid(page), RecentGlobalXmin)))
 
 /*
  * We use our own ItemPointerGet(BlockNumber|OffsetNumber)
@@ -540,7 +550,18 @@ typedef struct ginxlogDeletePage
 {
 	OffsetNumber parentOffset;
 	BlockNumber rightLink;
+	TransactionId deleteXid;	/* last Xid which could see this page in scan */
 } ginxlogDeletePage;
+
+/*
+ * Previous version of ginxlogDeletePage struct, which didn't have deleteXid
+ * field.  Used for size comparison (see ginRedoDeletePage()).
+ */
+typedef struct ginxlogDeletePageOld
+{
+	OffsetNumber parentOffset;
+	BlockNumber rightLink;
+} ginxlogDeletePageOld;
 
 #define XLOG_GIN_UPDATE_META_PAGE 0x60
 
@@ -948,7 +969,7 @@ extern void ginHeapTupleFastCollect(GinState *ginstate,
 						OffsetNumber attnum, Datum value, bool isNull,
 						ItemPointer ht_ctid);
 extern void ginInsertCleanup(GinState *ginstate, bool full_clean,
-				 bool fill_fsm, IndexBulkDeleteResult *stats);
+				 bool fill_fsm, bool forceCleanup, IndexBulkDeleteResult *stats);
 
 /* ginpostinglist.c */
 

@@ -167,12 +167,12 @@
 
     <para>
         <command>DELETE</command> commands don't need a normal target list
-        because they don't produce any result.  Instead, the rule system
+        because they don't produce any result.  Instead, the planner
         adds a special <acronym>CTID</> entry to the empty target list,
         to allow the executor to find the row to be deleted.
         (<acronym>CTID</> is added when the result relation is an ordinary
-        table.  If it is a view, a whole-row variable is added instead,
-        as described in <xref linkend="rules-views-update">.)
+        table.  If it is a view, a whole-row variable is added instead, by
+        the rule system, as described in <xref linkend="rules-views-update">.)
     </para>
 
     <para>
@@ -194,7 +194,7 @@
         column = expression</literal> part of the command.  The planner will
         handle missing columns by inserting expressions that copy the values
         from the old row into the new one.  Just as for <command>DELETE</>,
-        the rule system adds a <acronym>CTID</> or whole-row variable so that
+        a <acronym>CTID</> or whole-row variable is added so that
         the executor can identify the old row to be updated.
     </para>
 
@@ -2433,30 +2433,6 @@ Nestloop
     will be more or less independent from the number of affected rows
     in a command.
 </para>
-
-<![IGNORE[
-<!-- What's happening with this?  If it doesn't come back, remove this section. -->
-<para>
-    Another situation is cases on <command>UPDATE</command> where it depends on the
-    change of an attribute if an action should be performed or
-    not. The only way to
-    create a rule as in the shoelace_log example is to do it with
-    a rule qualification. That results in an extra query that is
-    performed always, even if the attribute of interest cannot
-    change at all because it does not appear in the target list
-    of the initial query. When this is enabled again, it will be
-    one more advantage of rules over triggers. Optimization of
-    a trigger must fail by definition in this case, because the
-    fact that its actions will only be done when a specific attribute
-    is updated is hidden in its functionality. The definition of
-    a trigger only allows to specify it on row level, so whenever a
-    row is touched, the trigger must be called to make its
-    decision. The rule system will know it by looking up the
-    target list and will suppress the additional query completely
-    if the attribute isn't touched. So the rule, qualified or not,
-    will only do its scans if there ever could be something to do.
-</para>
-]]>
 
 <para>
     The summary is, rules will only be significantly slower than

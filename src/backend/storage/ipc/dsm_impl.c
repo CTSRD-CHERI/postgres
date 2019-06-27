@@ -47,6 +47,7 @@
  */
 
 #include "postgres.h"
+#include "miscadmin.h"
 
 #include <fcntl.h>
 #include <string.h>
@@ -73,6 +74,7 @@
 static bool dsm_impl_posix(dsm_op op, dsm_handle handle, Size request_size,
 			   void **impl_private, void **mapped_address,
 			   Size *mapped_size, int elevel);
+static int	dsm_impl_posix_resize(int fd, off_t size);
 #endif
 #ifdef USE_DSM_SYSV
 static bool dsm_impl_sysv(dsm_op op, dsm_handle handle, Size request_size,
@@ -320,7 +322,8 @@ dsm_impl_posix(dsm_op op, dsm_handle handle, Size request_size,
 		}
 		request_size = st.st_size;
 	}
-	else if (*mapped_size != request_size && ftruncate(fd, request_size))
+	else if (*mapped_size != request_size &&
+			 dsm_impl_posix_resize(fd, request_size) != 0)
 	{
 		int			save_errno;
 
@@ -330,6 +333,14 @@ dsm_impl_posix(dsm_op op, dsm_handle handle, Size request_size,
 		if (op == DSM_OP_CREATE)
 			shm_unlink(name);
 		errno = save_errno;
+
+		/*
+		 * If we received a query cancel or termination signal, we will have
+		 * EINTR set here.  If the caller said that errors are OK here, check
+		 * for interrupts immediately.
+		 */
+		if (errno == EINTR && elevel >= ERROR)
+			CHECK_FOR_INTERRUPTS();
 
 		ereport(elevel,
 				(errcode_for_dynamic_shared_memory(),
@@ -393,7 +404,56 @@ dsm_impl_posix(dsm_op op, dsm_handle handle, Size request_size,
 
 	return true;
 }
-#endif
+
+/*
+ * Set the size of a virtual memory region associated with a file descriptor.
+ * If necessary, also ensure that virtual memory is actually allocated by the
+ * operating system, to avoid nasty surprises later.
+ *
+ * Returns non-zero if either truncation or allocation fails, and sets errno.
+ */
+static int
+dsm_impl_posix_resize(int fd, off_t size)
+{
+	int			rc;
+
+	/* Truncate (or extend) the file to the requested size. */
+	rc = ftruncate(fd, size);
+
+	/*
+	 * On Linux, a shm_open fd is backed by a tmpfs file.  After resizing with
+	 * ftruncate, the file may contain a hole.  Accessing memory backed by a
+	 * hole causes tmpfs to allocate pages, which fails with SIGBUS if there
+	 * is no more tmpfs space available.  So we ask tmpfs to allocate pages
+	 * here, so we can fail gracefully with ENOSPC now rather than risking
+	 * SIGBUS later.
+	 */
+#if defined(HAVE_POSIX_FALLOCATE) && defined(__linux__)
+	if (rc == 0)
+	{
+		/*
+		 * We may get interrupted.  If so, just retry unless there is an
+		 * interrupt pending.  This avoids the possibility of looping forever
+		 * if another backend is repeatedly trying to interrupt us.
+		 */
+		do
+		{
+			rc = posix_fallocate(fd, 0, size);
+		} while (rc == EINTR && !(ProcDiePending || QueryCancelPending));
+
+		/*
+		 * The caller expects errno to be set, but posix_fallocate() doesn't
+		 * set it.  Instead it returns error numbers directly.  So set errno,
+		 * even though we'll also return rc to indicate success or failure.
+		 */
+		errno = rc;
+	}
+#endif							/* HAVE_POSIX_FALLOCATE && __linux__ */
+
+	return rc;
+}
+
+#endif							/* USE_DSM_POSIX */
 
 #ifdef USE_DSM_SYSV
 /*
@@ -878,7 +938,7 @@ dsm_impl_mmap(dsm_op op, dsm_handle handle, Size request_size,
 
 		/* Back out what's already been done. */
 		save_errno = errno;
-		close(fd);
+		CloseTransientFile(fd);
 		if (op == DSM_OP_CREATE)
 			unlink(name);
 		errno = save_errno;

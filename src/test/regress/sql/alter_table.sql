@@ -251,6 +251,20 @@ DROP TABLE constraint_rename_test;
 ALTER TABLE IF EXISTS constraint_not_exist RENAME CONSTRAINT con3 TO con3foo; -- ok
 ALTER TABLE IF EXISTS constraint_rename_test ADD CONSTRAINT con4 UNIQUE (a);
 
+-- renaming constraints with cache reset of target relation
+CREATE TABLE constraint_rename_cache (a int,
+  CONSTRAINT chk_a CHECK (a > 0),
+  PRIMARY KEY (a));
+ALTER TABLE constraint_rename_cache
+  RENAME CONSTRAINT chk_a TO chk_a_new;
+ALTER TABLE constraint_rename_cache
+  RENAME CONSTRAINT constraint_rename_cache_pkey TO constraint_rename_pkey_new;
+CREATE TABLE like_constraint_rename_cache
+  (LIKE constraint_rename_cache INCLUDING ALL);
+\d like_constraint_rename_cache
+DROP TABLE constraint_rename_cache;
+DROP TABLE like_constraint_rename_cache;
+
 -- FOREIGN KEY CONSTRAINT adding TEST
 
 CREATE TABLE tmp2 (a int primary key);
@@ -1293,6 +1307,31 @@ select * from anothertab;
 
 drop table anothertab;
 
+-- Test index handling in alter table column type (cf. bugs #15835, #15865)
+create table anothertab(f1 int primary key, f2 int unique,
+                        f3 int, f4 int, f5 int);
+alter table anothertab
+  add exclude using btree (f3 with =);
+alter table anothertab
+  add exclude using btree (f4 with =) where (f4 is not null);
+alter table anothertab
+  add exclude using btree (f4 with =) where (f5 > 0);
+alter table anothertab
+  add unique(f1,f4);
+create index on anothertab(f2,f3);
+create unique index on anothertab(f4);
+
+\d anothertab
+alter table anothertab alter column f1 type bigint;
+alter table anothertab
+  alter column f2 type bigint,
+  alter column f3 type bigint,
+  alter column f4 type bigint;
+alter table anothertab alter column f5 type bigint;
+\d anothertab
+
+drop table anothertab;
+
 create table another (f1 int, f2 text);
 
 insert into another values(1, 'one');
@@ -1401,6 +1440,26 @@ ANALYZE check_fk_presence_2;
 ROLLBACK;
 \d check_fk_presence_2
 DROP TABLE check_fk_presence_1, check_fk_presence_2;
+
+-- check column addition within a view (bug #14876)
+create table at_base_table(id int, stuff text);
+insert into at_base_table values (23, 'skidoo');
+create view at_view_1 as select * from at_base_table bt;
+create view at_view_2 as select *, to_json(v1) as j from at_view_1 v1;
+\d+ at_view_1
+\d+ at_view_2
+explain (verbose, costs off) select * from at_view_2;
+select * from at_view_2;
+
+create or replace view at_view_1 as select *, 2+2 as more from at_base_table bt;
+\d+ at_view_1
+\d+ at_view_2
+explain (verbose, costs off) select * from at_view_2;
+select * from at_view_2;
+
+drop view at_view_2;
+drop view at_view_1;
+drop table at_base_table;
 
 --
 -- lock levels
@@ -1698,6 +1757,14 @@ ALTER TYPE test_type2 RENAME ATTRIBUTE a TO aa CASCADE;
 
 DROP TABLE test_tbl2_subclass;
 
+CREATE TYPE test_typex AS (a int, b text);
+CREATE TABLE test_tblx (x int, y test_typex check ((y).a > 0));
+ALTER TYPE test_typex DROP ATTRIBUTE a; -- fails
+ALTER TYPE test_typex DROP ATTRIBUTE a CASCADE;
+\d test_tblx
+DROP TABLE test_tblx;
+DROP TYPE test_typex;
+
 -- This test isn't that interesting on its own, but the purpose is to leave
 -- behind a table to test pg_upgrade with. The table has a composite type
 -- column in it, and the composite type has a dropped attribute.
@@ -1928,8 +1995,12 @@ ALTER TABLE test_add_column
 \d test_add_column
 ALTER TABLE test_add_column
 	ADD COLUMN c2 integer; -- fail because c2 already exists
+ALTER TABLE ONLY test_add_column
+	ADD COLUMN c2 integer; -- fail because c2 already exists
 \d test_add_column
 ALTER TABLE test_add_column
+	ADD COLUMN IF NOT EXISTS c2 integer; -- skipping because c2 already exists
+ALTER TABLE ONLY test_add_column
 	ADD COLUMN IF NOT EXISTS c2 integer; -- skipping because c2 already exists
 \d test_add_column
 ALTER TABLE test_add_column

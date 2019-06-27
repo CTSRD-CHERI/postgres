@@ -699,6 +699,22 @@ GetCurrentCommandId(bool used)
 }
 
 /*
+ *	SetParallelStartTimestamps
+ *
+ * In a parallel worker, we should inherit the parent transaction's
+ * timestamps rather than setting our own.  The parallel worker
+ * infrastructure must call this to provide those values before
+ * calling StartTransaction() or SetCurrentStatementStartTimestamp().
+ */
+void
+SetParallelStartTimestamps(TimestampTz xact_ts, TimestampTz stmt_ts)
+{
+	Assert(IsParallelWorker());
+	xactStartTimestamp = xact_ts;
+	stmtStartTimestamp = stmt_ts;
+}
+
+/*
  *	GetCurrentTransactionStartTimestamp
  */
 TimestampTz
@@ -732,11 +748,17 @@ GetCurrentTransactionStopTimestamp(void)
 
 /*
  *	SetCurrentStatementStartTimestamp
+ *
+ * In a parallel worker, this should already have been provided by a call
+ * to SetParallelStartTimestamps().
  */
 void
 SetCurrentStatementStartTimestamp(void)
 {
-	stmtStartTimestamp = GetCurrentTimestamp();
+	if (!IsParallelWorker())
+		stmtStartTimestamp = GetCurrentTimestamp();
+	else
+		Assert(stmtStartTimestamp != 0);
 }
 
 /*
@@ -1808,19 +1830,37 @@ StartTransaction(void)
 
 	Assert(XactTopTransactionId == InvalidTransactionId);
 
-	/*
-	 * check the current transaction state
-	 */
-	if (s->state != TRANS_DEFAULT)
-		elog(WARNING, "StartTransaction while in %s state",
-			 TransStateAsString(s->state));
+	/* check the current transaction state */
+	Assert(s->state == TRANS_DEFAULT);
 
 	/*
-	 * set the current transaction state information appropriately during
-	 * start processing
+	 * Set the current transaction state information appropriately during
+	 * start processing.  Note that once the transaction status is switched
+	 * this process cannot fail until the user ID and the security context
+	 * flags are fetched below.
 	 */
 	s->state = TRANS_START;
 	s->transactionId = InvalidTransactionId;	/* until assigned */
+
+	/*
+	 * initialize current transaction state fields
+	 *
+	 * note: prevXactReadOnly is not used at the outermost level
+	 */
+	s->nestingLevel = 1;
+	s->gucNestLevel = 1;
+	s->childXids = NULL;
+	s->nChildXids = 0;
+	s->maxChildXids = 0;
+
+	/*
+	 * Once the current user ID and the security context flags are fetched,
+	 * both will be properly reset even if transaction startup fails.
+	 */
+	GetUserIdAndSecContext(&s->prevUser, &s->prevSecContext);
+
+	/* SecurityRestrictionContext should never be set outside a transaction */
+	Assert(s->prevSecContext == 0);
 
 	/*
 	 * Make sure we've reset xact state variables
@@ -1889,26 +1929,18 @@ StartTransaction(void)
 	/*
 	 * set transaction_timestamp() (a/k/a now()).  We want this to be the same
 	 * as the first command's statement_timestamp(), so don't do a fresh
-	 * GetCurrentTimestamp() call (which'd be expensive anyway).  Also, mark
-	 * xactStopTimestamp as unset.
+	 * GetCurrentTimestamp() call (which'd be expensive anyway).  In a
+	 * parallel worker, this should already have been provided by a call to
+	 * SetParallelStartTimestamps().
+	 *
+	 * Also, mark xactStopTimestamp as unset.
 	 */
-	xactStartTimestamp = stmtStartTimestamp;
+	if (!IsParallelWorker())
+		xactStartTimestamp = stmtStartTimestamp;
+	else
+		Assert(xactStartTimestamp != 0);
 	xactStopTimestamp = 0;
 	pgstat_report_xact_timestamp(xactStartTimestamp);
-
-	/*
-	 * initialize current transaction state fields
-	 *
-	 * note: prevXactReadOnly is not used at the outermost level
-	 */
-	s->nestingLevel = 1;
-	s->gucNestLevel = 1;
-	s->childXids = NULL;
-	s->nChildXids = 0;
-	s->maxChildXids = 0;
-	GetUserIdAndSecContext(&s->prevUser, &s->prevSecContext);
-	/* SecurityRestrictionContext should never be set outside a transaction */
-	Assert(s->prevSecContext == 0);
 
 	/*
 	 * initialize other subsystems for new transaction
@@ -2120,9 +2152,6 @@ CommitTransaction(void)
 	 */
 	smgrDoPendingDeletes(true);
 
-	/* Check we've released all catcache entries */
-	AtEOXact_CatCache(true);
-
 	AtCommit_Notify();
 	AtEOXact_GUC(true, 1);
 	AtEOXact_SPI(true);
@@ -2132,7 +2161,7 @@ CommitTransaction(void)
 	AtEOXact_Files();
 	AtEOXact_ComboCid();
 	AtEOXact_HashTables(true);
-	AtEOXact_PgStat(true);
+	AtEOXact_PgStat(true, is_parallel_worker);
 	AtEOXact_Snapshot(true);
 	pgstat_report_xact_timestamp(0);
 
@@ -2391,9 +2420,6 @@ PrepareTransaction(void)
 	 */
 	PostPrepare_Twophase();
 
-	/* Check we've released all catcache entries */
-	AtEOXact_CatCache(true);
-
 	/* PREPARE acts the same as COMMIT as far as GUC is concerned */
 	AtEOXact_GUC(true, 1);
 	AtEOXact_SPI(true);
@@ -2593,7 +2619,6 @@ AbortTransaction(void)
 							 RESOURCE_RELEASE_AFTER_LOCKS,
 							 false, true);
 		smgrDoPendingDeletes(false);
-		AtEOXact_CatCache(false);
 
 		AtEOXact_GUC(false, 1);
 		AtEOXact_SPI(false);
@@ -2603,7 +2628,7 @@ AbortTransaction(void)
 		AtEOXact_Files();
 		AtEOXact_ComboCid();
 		AtEOXact_HashTables(false);
-		AtEOXact_PgStat(false);
+		AtEOXact_PgStat(false, is_parallel_worker);
 		pgstat_report_xact_timestamp(0);
 	}
 
@@ -4215,6 +4240,9 @@ AbortOutOfAnyTransaction(void)
 {
 	TransactionState s = CurrentTransactionState;
 
+	/* Ensure we're not running in a doomed memory context */
+	AtAbort_Memory();
+
 	/*
 	 * Get out of any transaction or nested transaction
 	 */
@@ -4256,7 +4284,14 @@ AbortOutOfAnyTransaction(void)
 				break;
 			case TBLOCK_ABORT:
 			case TBLOCK_ABORT_END:
-				/* AbortTransaction already done, still need Cleanup */
+
+				/*
+				 * AbortTransaction is already done, still need Cleanup.
+				 * However, if we failed partway through running ROLLBACK,
+				 * there will be an active portal running that command, which
+				 * we need to shut down before doing CleanupTransaction.
+				 */
+				AtAbort_Portals();
 				CleanupTransaction();
 				s->blockState = TBLOCK_DEFAULT;
 				break;
@@ -4279,6 +4314,14 @@ AbortOutOfAnyTransaction(void)
 			case TBLOCK_SUBABORT_END:
 			case TBLOCK_SUBABORT_RESTART:
 				/* As above, but AbortSubTransaction already done */
+				if (s->curTransactionOwner)
+				{
+					/* As in TBLOCK_ABORT, might have a live portal to zap */
+					AtSubAbort_Portals(s->subTransactionId,
+									   s->parent->subTransactionId,
+									   s->curTransactionOwner,
+									   s->parent->curTransactionOwner);
+				}
 				CleanupSubTransaction();
 				s = CurrentTransactionState;	/* changed by pop */
 				break;
@@ -4287,6 +4330,9 @@ AbortOutOfAnyTransaction(void)
 
 	/* Should be out of all subxacts now */
 	Assert(s->parent == NULL);
+
+	/* If we didn't actually have anything to do, revert to TopMemoryContext */
+	AtCleanup_Memory();
 }
 
 /*
@@ -5335,7 +5381,6 @@ xact_redo_commit(xl_xact_parsed_commit *parsed,
 				 RepOriginId origin_id)
 {
 	TransactionId max_xid;
-	int			i;
 	TimestampTz commit_time;
 
 	max_xid = TransactionIdLatest(xid, parsed->nsubxacts, parsed->subxacts);
@@ -5453,16 +5498,8 @@ xact_redo_commit(xl_xact_parsed_commit *parsed,
 		 */
 		XLogFlush(lsn);
 
-		for (i = 0; i < parsed->nrels; i++)
-		{
-			SMgrRelation srel = smgropen(parsed->xnodes[i], InvalidBackendId);
-			ForkNumber	fork;
-
-			for (fork = 0; fork <= MAX_FORKNUM; fork++)
-				XLogDropRelation(parsed->xnodes[i], fork);
-			smgrdounlink(srel, true);
-			smgrclose(srel);
-		}
+		/* Make sure files supposed to be dropped are dropped */
+		DropRelationFiles(parsed->xnodes, parsed->nrels, true);
 	}
 
 	/*
@@ -5501,7 +5538,6 @@ xact_redo_commit(xl_xact_parsed_commit *parsed,
 static void
 xact_redo_abort(xl_xact_parsed_abort *parsed, TransactionId xid)
 {
-	int			i;
 	TransactionId max_xid;
 
 	/*
@@ -5552,8 +5588,7 @@ xact_redo_abort(xl_xact_parsed_abort *parsed, TransactionId xid)
 						  xid, parsed->nsubxacts, parsed->subxacts, max_xid);
 
 		/*
-		 * There are no flat files that need updating, nor invalidation
-		 * messages to send or undo.
+		 * There are no invalidation messages to send or undo.
 		 */
 
 		/*
@@ -5563,16 +5598,7 @@ xact_redo_abort(xl_xact_parsed_abort *parsed, TransactionId xid)
 	}
 
 	/* Make sure files supposed to be dropped are dropped */
-	for (i = 0; i < parsed->nrels; i++)
-	{
-		SMgrRelation srel = smgropen(parsed->xnodes[i], InvalidBackendId);
-		ForkNumber	fork;
-
-		for (fork = 0; fork <= MAX_FORKNUM; fork++)
-			XLogDropRelation(parsed->xnodes[i], fork);
-		smgrdounlink(srel, true);
-		smgrclose(srel);
-	}
+	DropRelationFiles(parsed->xnodes, parsed->nrels, true);
 }
 
 void

@@ -48,7 +48,7 @@ _PG_init(void)
 {
 	/* Define custom GUC variables. */
 	DefineCustomRealVariable("pg_trgm.similarity_threshold",
-							 "Sets the threshold used by the %% operator.",
+							 "Sets the threshold used by the % operator.",
 							 "Valid range is 0.0 .. 1.0.",
 							 &similarity_threshold,
 							 0.3,
@@ -60,7 +60,7 @@ _PG_init(void)
 							 NULL,
 							 NULL);
 	DefineCustomRealVariable("pg_trgm.word_similarity_threshold",
-							 "Sets the threshold used by the <%% operator.",
+							 "Sets the threshold used by the <% operator.",
 							 "Valid range is 0.0 .. 1.0.",
 							 &word_similarity_threshold,
 							 0.6,
@@ -456,7 +456,7 @@ iterate_word_similarity(int *trg2indexes,
 			lastpos[trgindex] = i;
 		}
 
-		/* Adjust lower bound if this trigram is present in required substring */
+		/* Adjust upper bound if this trigram is present in required substring */
 		if (found[trgindex])
 		{
 			int			prev_lower,
@@ -473,7 +473,7 @@ iterate_word_similarity(int *trg2indexes,
 
 			smlr_cur = CALCSML(count, ulen1, ulen2);
 
-			/* Also try to adjust upper bound for greater similarity */
+			/* Also try to adjust lower bound for greater similarity */
 			tmp_count = count;
 			tmp_ulen2 = ulen2;
 			prev_lower = lower;

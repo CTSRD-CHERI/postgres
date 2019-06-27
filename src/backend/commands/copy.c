@@ -133,7 +133,7 @@ typedef struct CopyStateData
 
 	/* these are just for error messages, see CopyFromErrorCallback */
 	const char *cur_relname;	/* table name for error messages */
-	int			cur_lineno;		/* line number for error messages */
+	uint64		cur_lineno;		/* line number for error messages */
 	const char *cur_attname;	/* current att for error messages */
 	const char *cur_attval;		/* current att value for error messages */
 
@@ -298,7 +298,7 @@ static void CopyFromInsertBatch(CopyState cstate, EState *estate,
 					ResultRelInfo *resultRelInfo, TupleTableSlot *myslot,
 					BulkInsertState bistate,
 					int nBufferedTuples, HeapTuple *bufferedTuples,
-					int firstBufferedLineNo);
+					uint64 firstBufferedLineNo);
 static bool CopyReadLine(CopyState cstate);
 static bool CopyReadLineText(CopyState cstate);
 static int	CopyReadAttributesText(CopyState cstate);
@@ -1802,7 +1802,16 @@ BeginCopyTo(Relation rel,
 					  errmsg("relative path not allowed for COPY to file")));
 
 			oumask = umask(S_IWGRP | S_IWOTH);
-			cstate->copy_file = AllocateFile(cstate->filename, PG_BINARY_W);
+			PG_TRY();
+			{
+				cstate->copy_file = AllocateFile(cstate->filename, PG_BINARY_W);
+			}
+			PG_CATCH();
+			{
+				umask(oumask);
+				PG_RE_THROW();
+			}
+			PG_END_TRY();
 			umask(oumask);
 			if (cstate->copy_file == NULL)
 				ereport(ERROR,
@@ -2137,17 +2146,21 @@ void
 CopyFromErrorCallback(void *arg)
 {
 	CopyState	cstate = (CopyState) arg;
+	char		curlineno_str[32];
+
+	snprintf(curlineno_str, sizeof(curlineno_str), UINT64_FORMAT,
+			 cstate->cur_lineno);
 
 	if (cstate->binary)
 	{
 		/* can't usefully display the data */
 		if (cstate->cur_attname)
-			errcontext("COPY %s, line %d, column %s",
-					   cstate->cur_relname, cstate->cur_lineno,
+			errcontext("COPY %s, line %s, column %s",
+					   cstate->cur_relname, curlineno_str,
 					   cstate->cur_attname);
 		else
-			errcontext("COPY %s, line %d",
-					   cstate->cur_relname, cstate->cur_lineno);
+			errcontext("COPY %s, line %s",
+					   cstate->cur_relname, curlineno_str);
 	}
 	else
 	{
@@ -2157,16 +2170,16 @@ CopyFromErrorCallback(void *arg)
 			char	   *attval;
 
 			attval = limit_printout_length(cstate->cur_attval);
-			errcontext("COPY %s, line %d, column %s: \"%s\"",
-					   cstate->cur_relname, cstate->cur_lineno,
+			errcontext("COPY %s, line %s, column %s: \"%s\"",
+					   cstate->cur_relname, curlineno_str,
 					   cstate->cur_attname, attval);
 			pfree(attval);
 		}
 		else if (cstate->cur_attname)
 		{
 			/* error is relevant to a particular column, value is NULL */
-			errcontext("COPY %s, line %d, column %s: null input",
-					   cstate->cur_relname, cstate->cur_lineno,
+			errcontext("COPY %s, line %s, column %s: null input",
+					   cstate->cur_relname, curlineno_str,
 					   cstate->cur_attname);
 		}
 		else
@@ -2187,14 +2200,14 @@ CopyFromErrorCallback(void *arg)
 				char	   *lineval;
 
 				lineval = limit_printout_length(cstate->line_buf.data);
-				errcontext("COPY %s, line %d: \"%s\"",
-						   cstate->cur_relname, cstate->cur_lineno, lineval);
+				errcontext("COPY %s, line %s: \"%s\"",
+						   cstate->cur_relname, curlineno_str, lineval);
 				pfree(lineval);
 			}
 			else
 			{
-				errcontext("COPY %s, line %d",
-						   cstate->cur_relname, cstate->cur_lineno);
+				errcontext("COPY %s, line %s",
+						   cstate->cur_relname, curlineno_str);
 			}
 		}
 	}
@@ -2262,7 +2275,7 @@ CopyFrom(CopyState cstate)
 #define MAX_BUFFERED_TUPLES 1000
 	HeapTuple  *bufferedTuples = NULL;	/* initialize to silence warning */
 	Size		bufferedTuplesSize = 0;
-	int			firstBufferedLineNo = 0;
+	uint64		firstBufferedLineNo = 0;
 
 	Assert(cstate->rel);
 
@@ -2344,13 +2357,25 @@ CopyFrom(CopyState cstate)
 	/*
 	 * Optimize if new relfilenode was created in this subxact or one of its
 	 * committed children and we won't see those rows later as part of an
-	 * earlier scan or command. This ensures that if this subtransaction
-	 * aborts then the frozen rows won't be visible after xact cleanup. Note
+	 * earlier scan or command. The subxact test ensures that if this subxact
+	 * aborts then the frozen rows won't be visible after xact cleanup.  Note
 	 * that the stronger test of exactly which subtransaction created it is
-	 * crucial for correctness of this optimisation.
+	 * crucial for correctness of this optimisation. The test for an earlier
+	 * scan or command tolerates false negatives. FREEZE causes other sessions
+	 * to see rows they would not see under MVCC, and a false negative merely
+	 * spreads that anomaly to the current session.
 	 */
 	if (cstate->freeze)
 	{
+		/*
+		 * Tolerate one registration for the benefit of FirstXactSnapshot.
+		 * Scan-bearing queries generally create at least two registrations,
+		 * though relying on that is fragile, as is ignoring ActiveSnapshot.
+		 * Clear CatalogSnapshot to avoid counting its registration.  We'll
+		 * still detect ongoing catalog scans, each of which separately
+		 * registers the snapshot it uses.
+		 */
+		InvalidateCatalogSnapshot();
 		if (!ThereAreNoPriorRegisteredSnapshots() || !ThereAreNoReadyPortals())
 			ereport(ERROR,
 					(errcode(ERRCODE_INVALID_TRANSACTION_STATE),
@@ -2606,11 +2631,11 @@ CopyFromInsertBatch(CopyState cstate, EState *estate, CommandId mycid,
 					int hi_options, ResultRelInfo *resultRelInfo,
 					TupleTableSlot *myslot, BulkInsertState bistate,
 					int nBufferedTuples, HeapTuple *bufferedTuples,
-					int firstBufferedLineNo)
+					uint64 firstBufferedLineNo)
 {
 	MemoryContext oldcontext;
 	int			i;
-	int			save_cur_lineno;
+	uint64		save_cur_lineno;
 
 	/*
 	 * Print error context information correctly, if one of the operations

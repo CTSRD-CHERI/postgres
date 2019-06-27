@@ -268,6 +268,12 @@ InitProcGlobal(void)
 
 		/* Initialize lockGroupMembers list. */
 		dlist_init(&procs[i].lockGroupMembers);
+
+		/*
+		 * Initialize the atomic variable, otherwise, it won't be safe to
+		 * access it for backends that aren't currently in use.
+		 */
+		pg_atomic_init_u32(&(procs[i].procArrayGroupNext), INVALID_PGPROCNO);
 	}
 
 	/*
@@ -401,7 +407,7 @@ InitProcess(void)
 	/* Initialize fields for group XID clearing. */
 	MyProc->procArrayGroupMember = false;
 	MyProc->procArrayGroupMemberXid = InvalidTransactionId;
-	pg_atomic_init_u32(&MyProc->procArrayGroupNext, INVALID_PGPROCNO);
+	Assert(pg_atomic_read_u32(&MyProc->procArrayGroupNext) == INVALID_PGPROCNO);
 
 	/* Check that group locking fields are in a proper initial state. */
 	Assert(MyProc->lockGroupLeader == NULL);
@@ -1127,8 +1133,7 @@ ProcSleep(LOCALLOCK *locallock, LockMethod lockMethodTable)
 
 	/*
 	 * If we detected deadlock, give up without waiting.  This must agree with
-	 * CheckDeadLock's recovery code, except that we shouldn't release the
-	 * semaphore since we haven't tried to lock it yet.
+	 * CheckDeadLock's recovery code.
 	 */
 	if (early_deadlock)
 	{
@@ -1164,9 +1169,9 @@ ProcSleep(LOCALLOCK *locallock, LockMethod lockMethodTable)
 
 	/*
 	 * Set timer so we can wake up after awhile and check for a deadlock. If a
-	 * deadlock is detected, the handler releases the process's semaphore and
-	 * sets MyProc->waitStatus = STATUS_ERROR, allowing us to know that we
-	 * must report failure rather than success.
+	 * deadlock is detected, the handler sets MyProc->waitStatus =
+	 * STATUS_ERROR, allowing us to know that we must report failure rather
+	 * than success.
 	 *
 	 * By delaying the check until we've waited for a bit, we can avoid
 	 * running the rather expensive deadlock-check code in most cases.
@@ -1508,7 +1513,7 @@ ProcSleep(LOCALLOCK *locallock, LockMethod lockMethodTable)
 
 
 /*
- * ProcWakeup -- wake up a process by releasing its private semaphore.
+ * ProcWakeup -- wake up a process by setting its latch.
  *
  *	 Also remove the process from the wait queue and set its links invalid.
  *	 RETURN: the next process in the wait queue.
@@ -1643,8 +1648,7 @@ CheckDeadLock(void)
 	 * we know that we don't have to wait anymore.
 	 *
 	 * We check by looking to see if we've been unlinked from the wait queue.
-	 * This is quicker than checking our semaphore's state, since no kernel
-	 * call is needed, and it is safe because we hold the lock partition lock.
+	 * This is safe because we hold the lock partition lock.
 	 */
 	if (MyProc->links.prev == NULL ||
 		MyProc->links.next == NULL)

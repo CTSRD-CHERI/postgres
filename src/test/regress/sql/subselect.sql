@@ -445,6 +445,16 @@ create temp table nocolumns();
 select exists(select * from nocolumns);
 
 --
+-- Check behavior with a SubPlan in VALUES (bug #14924)
+--
+select val.x
+  from generate_series(1,10) as s(i),
+  lateral (
+    values ((select s.i + 1)), (s.i + 101)
+  ) as val(x)
+where s.i < 10 and (select val.x) < 110;
+
+--
 -- Check sane behavior with nested IN SubLinks
 --
 explain (verbose, costs off)
@@ -486,3 +496,19 @@ select * from
   order by 1;
 
 select nextval('ts1');
+
+--
+-- Ensure that backward scan direction isn't propagated into
+-- expression subqueries (bug #15336)
+--
+
+begin;
+
+declare c1 scroll cursor for
+ select * from generate_series(1,4) i
+  where i <> all (values (2),(3));
+
+move forward all in c1;
+fetch backward all in c1;
+
+commit;

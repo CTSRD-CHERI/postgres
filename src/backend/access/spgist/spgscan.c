@@ -74,6 +74,13 @@ resetSpGistScanOpaque(SpGistScanOpaque so)
 
 	freeScanStack(so);
 
+	/*
+	 * clear traversal context before proceeding to the next scan; this must
+	 * not happen before the freeScanStack above, else we get double-free
+	 * crashes.
+	 */
+	MemoryContextReset(so->traversalCxt);
+
 	if (so->searchNulls)
 	{
 		/* Stack a work item to scan the null index entries */
@@ -194,6 +201,9 @@ spgbeginscan(Relation rel, int keysz, int orderbysz)
 	so->tempCxt = AllocSetContextCreate(CurrentMemoryContext,
 										"SP-GiST search temporary context",
 										ALLOCSET_DEFAULT_SIZES);
+	so->traversalCxt = AllocSetContextCreate(CurrentMemoryContext,
+											 "SP-GiST traversal-value context",
+											 ALLOCSET_DEFAULT_SIZES);
 
 	/* Set up indexTupDesc and xs_itupdesc in case it's an index-only scan */
 	so->indexTupDesc = scan->xs_itupdesc = RelationGetDescr(rel);
@@ -229,6 +239,15 @@ spgendscan(IndexScanDesc scan)
 	SpGistScanOpaque so = (SpGistScanOpaque) scan->opaque;
 
 	MemoryContextDelete(so->tempCxt);
+	MemoryContextDelete(so->traversalCxt);
+
+	if (so->keyData)
+		pfree(so->keyData);
+
+	if (so->state.deadTupleStorage)
+		pfree(so->state.deadTupleStorage);
+
+	pfree(so);
 }
 
 /*
@@ -463,7 +482,7 @@ redirect:
 			in.scankeys = so->keyData;
 			in.nkeys = so->numberOfKeys;
 			in.reconstructedValue = stackEntry->reconstructedValue;
-			in.traversalMemoryContext = oldCtx;
+			in.traversalMemoryContext = so->traversalCxt;
 			in.traversalValue = stackEntry->traversalValue;
 			in.level = stackEntry->level;
 			in.returnData = so->want_itup;

@@ -516,6 +516,32 @@ EXPLAIN (VERBOSE, COSTS OFF)
 SELECT t1."C 1" FROM "S 1"."T 1" t1, LATERAL (SELECT DISTINCT t2.c1, t3.c1 FROM ft1 t2, ft2 t3 WHERE t2.c1 = t3.c1 AND t2.c2 = t1.c2) q ORDER BY t1."C 1" OFFSET 10 LIMIT 10;
 SELECT t1."C 1" FROM "S 1"."T 1" t1, LATERAL (SELECT DISTINCT t2.c1, t3.c1 FROM ft1 t2, ft2 t3 WHERE t2.c1 = t3.c1 AND t2.c2 = t1.c2) q ORDER BY t1."C 1" OFFSET 10 LIMIT 10;
 
+-- bug #15613: bad plan for foreign table scan with lateral reference
+EXPLAIN (VERBOSE, COSTS OFF)
+SELECT ref_0.c2, subq_1.*
+FROM
+    "S 1"."T 1" AS ref_0,
+    LATERAL (
+        SELECT ref_0."C 1" c1, subq_0.*
+        FROM (SELECT ref_0.c2, ref_1.c3
+              FROM ft1 AS ref_1) AS subq_0
+             RIGHT JOIN ft2 AS ref_3 ON (subq_0.c3 = ref_3.c3)
+    ) AS subq_1
+WHERE ref_0."C 1" < 10 AND subq_1.c3 = '00001'
+ORDER BY ref_0."C 1";
+
+SELECT ref_0.c2, subq_1.*
+FROM
+    "S 1"."T 1" AS ref_0,
+    LATERAL (
+        SELECT ref_0."C 1" c1, subq_0.*
+        FROM (SELECT ref_0.c2, ref_1.c3
+              FROM ft1 AS ref_1) AS subq_0
+             RIGHT JOIN ft2 AS ref_3 ON (subq_0.c3 = ref_3.c3)
+    ) AS subq_1
+WHERE ref_0."C 1" < 10 AND subq_1.c3 = '00001'
+ORDER BY ref_0."C 1";
+
 -- non-Var items in targetlist of the nullable rel of a join preventing
 -- push-down in some cases
 -- unable to push {ft1, ft2}
@@ -533,6 +559,18 @@ UPDATE ft5 SET c3 = null where c1 % 9 = 0;
 EXPLAIN (VERBOSE, COSTS OFF)
 SELECT ft5, ft5.c1, ft5.c2, ft5.c3, ft4.c1, ft4.c2 FROM ft5 left join ft4 on ft5.c1 = ft4.c1 WHERE ft4.c1 BETWEEN 10 and 30 ORDER BY ft5.c1, ft4.c1;
 SELECT ft5, ft5.c1, ft5.c2, ft5.c3, ft4.c1, ft4.c2 FROM ft5 left join ft4 on ft5.c1 = ft4.c1 WHERE ft4.c1 BETWEEN 10 and 30 ORDER BY ft5.c1, ft4.c1;
+
+-- multi-way join involving multiple merge joins
+-- (this case used to have EPQ-related planning problems)
+SET enable_nestloop TO false;
+SET enable_hashjoin TO false;
+EXPLAIN (VERBOSE, COSTS OFF)
+SELECT * FROM ft1, ft2, ft4, ft5 WHERE ft1.c1 = ft2.c1 AND ft1.c2 = ft4.c1
+    AND ft1.c2 = ft5.c1 AND ft1.c1 < 100 AND ft2.c1 < 100 FOR UPDATE;
+SELECT * FROM ft1, ft2, ft4, ft5 WHERE ft1.c1 = ft2.c1 AND ft1.c2 = ft4.c1
+    AND ft1.c2 = ft5.c1 AND ft1.c1 < 100 AND ft2.c1 < 100 FOR UPDATE;
+RESET enable_nestloop;
+RESET enable_hashjoin;
 
 -- check join pushdown in situations where multiple userids are involved
 CREATE ROLE regress_view_owner;
@@ -1027,6 +1065,11 @@ SELECT * from loc1;
 UPDATE rem1 set f2 = 'skidoo' RETURNING f2;
 SELECT * from loc1;
 
+EXPLAIN (verbose, costs off)
+UPDATE rem1 set f1 = 10;          -- all columns should be transmitted
+UPDATE rem1 set f1 = 10;
+SELECT * from loc1;
+
 DELETE FROM rem1;
 
 -- Add a second trigger, to check that the changes are propagated correctly
@@ -1318,6 +1361,24 @@ explain (verbose, costs off)
 update bar set f2 = f2 + 100 returning *;
 update bar set f2 = f2 + 100 returning *;
 
+-- Test that UPDATE/DELETE with inherited target works with row-level triggers
+CREATE TRIGGER trig_row_before
+BEFORE UPDATE OR DELETE ON bar2
+FOR EACH ROW EXECUTE PROCEDURE trigger_data(23,'skidoo');
+
+CREATE TRIGGER trig_row_after
+AFTER UPDATE OR DELETE ON bar2
+FOR EACH ROW EXECUTE PROCEDURE trigger_data(23,'skidoo');
+
+explain (verbose, costs off)
+update bar set f2 = f2 + 100;
+update bar set f2 = f2 + 100;
+
+explain (verbose, costs off)
+delete from bar where f2 < 400;
+delete from bar where f2 < 400;
+
+-- cleanup
 drop table foo cascade;
 drop table bar cascade;
 drop table loct1;

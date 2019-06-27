@@ -170,7 +170,7 @@ ExecSerializePlan(Plan *plan, EState *estate)
  * shm_toc_estimate_keys on &pcxt->estimator.
  *
  * While we're at it, count the number of PlanState nodes in the tree, so
- * we know how many SharedPlanStateInstrumentation structures we need.
+ * we know how many Instrumentation structures we need.
  */
 static bool
 ExecParallelEstimate(PlanState *planstate, void *arg)
@@ -535,7 +535,7 @@ ExecParallelRetrieveInstrumentation(PlanState *planstate, void* _arg)
 
 /*
  * Finish parallel execution.  We wait for parallel workers to finish, and
- * accumulate their buffer usage and instrumentation.
+ * accumulate their buffer usage.
  */
 void
 ExecParallelFinish(ParallelExecutorInfo *pei)
@@ -552,23 +552,23 @@ ExecParallelFinish(ParallelExecutorInfo *pei)
 	for (i = 0; i < pei->pcxt->nworkers_launched; ++i)
 		InstrAccumParallelQuery(&pei->buffer_usage[i]);
 
-	/* Finally, accumulate instrumentation, if any. */
-	if (pei->instrumentation)
-		ExecParallelRetrieveInstrumentation(pei->planstate,
-											pei->instrumentation);
-
 	pei->finished = true;
 }
 
 /*
- * Clean up whatever ParallelExecutorInfo resources still exist after
- * ExecParallelFinish.  We separate these routines because someone might
- * want to examine the contents of the DSM after ExecParallelFinish and
- * before calling this routine.
+ * Accumulate instrumentation, and then clean up whatever ParallelExecutorInfo
+ * resources still exist after ExecParallelFinish.  We separate these
+ * routines because someone might want to examine the contents of the DSM
+ * after ExecParallelFinish and before calling this routine.
  */
 void
 ExecParallelCleanup(ParallelExecutorInfo *pei)
 {
+	/* Accumulate instrumentation, if any. */
+	if (pei->instrumentation)
+		ExecParallelRetrieveInstrumentation(pei->planstate,
+											pei->instrumentation);
+
 	if (pei->pcxt != NULL)
 	{
 		DestroyParallelContext(pei->pcxt);
@@ -735,12 +735,19 @@ ParallelQueryMain(dsm_segment *seg, shm_toc *toc)
 		instrument_options = instrumentation->instrument_options;
 	queryDesc = ExecParallelGetQueryDesc(toc, receiver, instrument_options);
 
-	/* Prepare to track buffer usage during query execution. */
-	InstrStartParallelQuery();
-
 	/* Start up the executor, have it run the plan, and then shut it down. */
 	ExecutorStart(queryDesc, 0);
 	ExecParallelInitializeWorker(queryDesc->planstate, toc);
+
+	/*
+	 * Prepare to track buffer usage during query execution.
+	 *
+	 * We do this after starting up the executor to match what happens in the
+	 * leader, which also doesn't count buffer accesses that occur during
+	 * executor startup.
+	 */
+	InstrStartParallelQuery();
+
 	ExecutorRun(queryDesc, ForwardScanDirection, 0L);
 	ExecutorFinish(queryDesc);
 

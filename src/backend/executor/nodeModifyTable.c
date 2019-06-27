@@ -1067,7 +1067,7 @@ lreplace:;
  * (but still lock row, even though it may not satisfy estate's
  * snapshot).
  *
- * Returns true if if we're done (with or without an update), or false if
+ * Returns true if we're done (with or without an update), or false if
  * the caller must retry the INSERT from scratch.
  */
 static bool
@@ -1324,7 +1324,7 @@ ExecModifyTable(ModifyTableState *node)
 	JunkFilter *junkfilter;
 	TupleTableSlot *slot;
 	TupleTableSlot *planSlot;
-	ItemPointer tupleid = NULL;
+	ItemPointer tupleid;
 	ItemPointerData tuple_ctid;
 	HeapTupleData oldtupdata;
 	HeapTuple	oldtuple;
@@ -1432,6 +1432,7 @@ ExecModifyTable(ModifyTableState *node)
 		EvalPlanQualSetSlot(&node->mt_epqstate, planSlot);
 		slot = planSlot;
 
+		tupleid = NULL;
 		oldtuple = NULL;
 		if (junkfilter != NULL)
 		{

@@ -998,7 +998,7 @@ config_sspi_auth(const char *pgdata)
 	} while (0)
 
 	res = snprintf(fname, sizeof(fname), "%s/pg_hba.conf", pgdata);
-	if (res < 0 || res >= sizeof(fname) - 1)
+	if (res < 0 || res >= sizeof(fname))
 	{
 		/*
 		 * Truncating this name is a fatal error, because we must not fail to
@@ -1717,13 +1717,10 @@ run_schedule(const char *schedule, test_function tfunc)
 			 */
 			for (rl = resultfiles[i], el = expectfiles[i], tl = tags[i];
 				 rl != NULL;	/* rl and el have the same length */
-				 rl = rl->next, el = el->next)
+				 rl = rl->next, el = el->next,
+				 tl = tl ? tl->next : NULL)
 			{
 				bool		newdiff;
-
-				if (tl)
-					tl = tl->next;		/* tl has the same length as rl and el
-										 * if it exists */
 
 				newdiff = results_differ(tests[i], rl->str, el->str);
 				if (newdiff && tl)
@@ -1804,13 +1801,10 @@ run_single_test(const char *test, test_function tfunc)
 	 */
 	for (rl = resultfiles, el = expectfiles, tl = tags;
 		 rl != NULL;			/* rl and el have the same length */
-		 rl = rl->next, el = el->next)
+		 rl = rl->next, el = el->next,
+		 tl = tl ? tl->next : NULL)
 	{
 		bool		newdiff;
-
-		if (tl)
-			tl = tl->next;		/* tl has the same length as rl and el if it
-								 * exists */
 
 		newdiff = results_differ(test, rl->str, el->str);
 		if (newdiff && tl)
@@ -2030,6 +2024,8 @@ regression_main(int argc, char *argv[], init_function ifunc, test_function tfunc
 
 	progname = get_progname(argv[0]);
 	set_pglocale_pgservice(argv[0], PG_TEXTDOMAIN("pg_regress"));
+
+	get_restricted_token(progname);
 
 	atexit(stop_postmaster);
 
@@ -2363,7 +2359,7 @@ regression_main(int argc, char *argv[], init_function ifunc, test_function tfunc
 			 * Fail immediately if postmaster has exited
 			 */
 #ifndef WIN32
-			if (kill(postmaster_pid, 0) != 0)
+			if (waitpid(postmaster_pid, NULL, WNOHANG) == postmaster_pid)
 #else
 			if (WaitForSingleObject(postmaster_pid, 0) == WAIT_OBJECT_0)
 #endif

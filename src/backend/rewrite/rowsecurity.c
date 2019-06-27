@@ -47,6 +47,7 @@
 #include "nodes/pg_list.h"
 #include "nodes/plannodes.h"
 #include "parser/parsetree.h"
+#include "rewrite/rewriteDefine.h"
 #include "rewrite/rewriteHandler.h"
 #include "rewrite/rewriteManip.h"
 #include "rewrite/rowsecurity.h"
@@ -309,6 +310,8 @@ get_row_security_policies(Query *root, RangeTblEntry *rte, int rt_index,
 		{
 			List	   *conflict_permissive_policies;
 			List	   *conflict_restrictive_policies;
+			List	   *conflict_select_permissive_policies = NIL;
+			List	   *conflict_select_restrictive_policies = NIL;
 
 			/* Get the policies that apply to the auxiliary UPDATE */
 			get_policies_for_relation(rel, CMD_UPDATE, user_id,
@@ -338,9 +341,6 @@ get_row_security_policies(Query *root, RangeTblEntry *rte, int rt_index,
 			 */
 			if (rte->requiredPerms & ACL_SELECT)
 			{
-				List	   *conflict_select_permissive_policies = NIL;
-				List	   *conflict_select_restrictive_policies = NIL;
-
 				get_policies_for_relation(rel, CMD_SELECT, user_id,
 										&conflict_select_permissive_policies,
 									  &conflict_select_restrictive_policies);
@@ -361,10 +361,32 @@ get_row_security_policies(Query *root, RangeTblEntry *rte, int rt_index,
 								   withCheckOptions,
 								   hasSubLinks,
 								   false);
+
+			/*
+			 * Add ALL/SELECT policies as WCO_RLS_UPDATE_CHECK WCOs, to ensure
+			 * that the final updated row is visible when taking the UPDATE
+			 * path of an INSERT .. ON CONFLICT DO UPDATE, if SELECT rights
+			 * are required for this relation.
+			 */
+			if (rte->requiredPerms & ACL_SELECT)
+				add_with_check_options(rel, rt_index,
+									   WCO_RLS_UPDATE_CHECK,
+									   conflict_select_permissive_policies,
+									   conflict_select_restrictive_policies,
+									   withCheckOptions,
+									   hasSubLinks,
+									   true);
 		}
 	}
 
 	heap_close(rel, NoLock);
+
+	/*
+	 * Copy checkAsUser to the row security quals and WithCheckOption checks,
+	 * in case they contain any subqueries referring to other relations.
+	 */
+	setRuleCheckAsUser((Node *) *securityQuals, rte->checkAsUser);
+	setRuleCheckAsUser((Node *) *withCheckOptions, rte->checkAsUser);
 
 	/*
 	 * Mark this query as having row security, so plancache can invalidate it

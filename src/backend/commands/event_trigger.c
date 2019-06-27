@@ -834,6 +834,19 @@ EventTriggerDDLCommandEnd(Node *parsetree)
 	if (!IsUnderPostmaster)
 		return;
 
+	/*
+	 * Also do nothing if our state isn't set up, which it won't be if there
+	 * weren't any relevant event triggers at the start of the current DDL
+	 * command.  This test might therefore seem optional, but it's important
+	 * because EventTriggerCommonSetup might find triggers that didn't exist
+	 * at the time the command started.  Although this function itself
+	 * wouldn't crash, the event trigger functions would presumably call
+	 * pg_event_trigger_ddl_commands which would fail.  Better to do nothing
+	 * until the next command.
+	 */
+	if (!currentEventTriggerState)
+		return;
+
 	runlist = EventTriggerCommonSetup(parsetree,
 									  EVT_DDLCommandEnd, "ddl_command_end",
 									  &trigdata);
@@ -885,9 +898,10 @@ EventTriggerSQLDrop(Node *parsetree)
 									  &trigdata);
 
 	/*
-	 * Nothing to do if run list is empty.  Note this shouldn't happen,
+	 * Nothing to do if run list is empty.  Note this typically can't happen,
 	 * because if there are no sql_drop events, then objects-to-drop wouldn't
 	 * have been collected in the first place and we would have quit above.
+	 * But it could occur if event triggers were dropped partway through.
 	 */
 	if (runlist == NIL)
 		return;
@@ -934,8 +948,6 @@ EventTriggerTableRewrite(Node *parsetree, Oid tableOid, int reason)
 	List	   *runlist;
 	EventTriggerData trigdata;
 
-	elog(DEBUG1, "EventTriggerTableRewrite(%u)", tableOid);
-
 	/*
 	 * Event Triggers are completely disabled in standalone mode.  There are
 	 * (at least) two reasons for this:
@@ -953,6 +965,16 @@ EventTriggerTableRewrite(Node *parsetree, Oid tableOid, int reason)
 	 * scenarios depend on code that's otherwise untested isn't appetizing.)
 	 */
 	if (!IsUnderPostmaster)
+		return;
+
+	/*
+	 * Also do nothing if our state isn't set up, which it won't be if there
+	 * weren't any relevant event triggers at the start of the current DDL
+	 * command.  This test might therefore seem optional, but it's
+	 * *necessary*, because EventTriggerCommonSetup might find triggers that
+	 * didn't exist at the time the command started.
+	 */
+	if (!currentEventTriggerState)
 		return;
 
 	runlist = EventTriggerCommonSetup(parsetree,
@@ -1677,11 +1699,6 @@ EventTriggerCollectSimpleCommand(ObjectAddress address,
  * Note we don't collect the command immediately; instead we keep it in
  * currentCommand, and only when we're done processing the subcommands we will
  * add it to the command list.
- *
- * XXX -- this API isn't considering the possibility of an ALTER TABLE command
- * being called reentrantly by an event trigger function.  Do we need stackable
- * commands at this level?	Perhaps at least we should detect the condition and
- * raise an error.
  */
 void
 EventTriggerAlterTableStart(Node *parsetree)
@@ -1706,6 +1723,7 @@ EventTriggerAlterTableStart(Node *parsetree)
 	command->d.alterTable.subcmds = NIL;
 	command->parsetree = copyObject(parsetree);
 
+	command->parent = currentEventTriggerState->currentCommand;
 	currentEventTriggerState->currentCommand = command;
 
 	MemoryContextSwitchTo(oldcxt);
@@ -1746,6 +1764,7 @@ EventTriggerCollectAlterTableSubcmd(Node *subcmd, ObjectAddress address)
 		return;
 
 	Assert(IsA(subcmd, AlterTableCmd));
+	Assert(currentEventTriggerState->currentCommand != NULL);
 	Assert(OidIsValid(currentEventTriggerState->currentCommand->d.alterTable.objectId));
 
 	oldcxt = MemoryContextSwitchTo(currentEventTriggerState->cxt);
@@ -1771,10 +1790,14 @@ EventTriggerCollectAlterTableSubcmd(Node *subcmd, ObjectAddress address)
 void
 EventTriggerAlterTableEnd(void)
 {
+	CollectedCommand *parent;
+
 	/* ignore if event trigger context not set, or collection disabled */
 	if (!currentEventTriggerState ||
 		currentEventTriggerState->commandCollectionInhibited)
 		return;
+
+	parent = currentEventTriggerState->currentCommand->parent;
 
 	/* If no subcommands, don't collect */
 	if (list_length(currentEventTriggerState->currentCommand->d.alterTable.subcmds) != 0)
@@ -1786,7 +1809,7 @@ EventTriggerAlterTableEnd(void)
 	else
 		pfree(currentEventTriggerState->currentCommand);
 
-	currentEventTriggerState->currentCommand = NULL;
+	currentEventTriggerState->currentCommand = parent;
 }
 
 /*

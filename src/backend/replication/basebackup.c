@@ -140,7 +140,7 @@ perform_base_backup(basebackup_options *opt, DIR *tblspcdir)
 	 * Once do_pg_start_backup has been called, ensure that any failure causes
 	 * us to abort the backup so we don't "leak" a backup counter. For this
 	 * reason, *all* functionality between do_pg_start_backup() and
-	 * do_pg_stop_backup() should be inside the error cleanup block!
+	 * the end of do_pg_stop_backup() should be inside the error cleanup block!
 	 */
 
 	PG_ENSURE_ERROR_CLEANUP(base_backup_cleanup, (Datum) 0);
@@ -249,10 +249,11 @@ perform_base_backup(basebackup_options *opt, DIR *tblspcdir)
 			else
 				pq_putemptymessage('c');		/* CopyDone */
 		}
+
+		endptr = do_pg_stop_backup(labelfile->data, !opt->nowait, &endtli);
 	}
 	PG_END_ENSURE_ERROR_CLEANUP(base_backup_cleanup, (Datum) 0);
 
-	endptr = do_pg_stop_backup(labelfile->data, !opt->nowait, &endtli);
 
 	if (opt->includewal)
 	{
@@ -391,6 +392,8 @@ perform_base_backup(basebackup_options *opt, DIR *tblspcdir)
 			fp = AllocateFile(pathbuf, "rb");
 			if (fp == NULL)
 			{
+				int			save_errno = errno;
+
 				/*
 				 * Most likely reason for this is that the file was already
 				 * removed by a checkpoint, so check for that to get a better
@@ -398,6 +401,7 @@ perform_base_backup(basebackup_options *opt, DIR *tblspcdir)
 				 */
 				CheckXLogRemoved(segno, tli);
 
+				errno = save_errno;
 				ereport(ERROR,
 						(errcode_for_file_access(),
 						 errmsg("could not open file \"%s\": %m", pathbuf)));

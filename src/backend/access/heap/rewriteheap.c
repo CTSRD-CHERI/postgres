@@ -405,7 +405,10 @@ rewrite_heap_tuple(RewriteState state,
 	 * While we have our hands on the tuple, we may as well freeze any
 	 * eligible xmin or xmax, so that future VACUUM effort can be saved.
 	 */
-	heap_freeze_tuple(new_tuple->t_data, state->rs_freeze_xid,
+	heap_freeze_tuple(new_tuple->t_data,
+					  state->rs_old_rel->rd_rel->relfrozenxid,
+					  state->rs_old_rel->rd_rel->relminmxid,
+					  state->rs_freeze_xid,
 					  state->rs_cutoff_multi);
 
 	/*
@@ -646,10 +649,22 @@ raw_heap_insert(RewriteState state, HeapTuple tup)
 		heaptup = tup;
 	}
 	else if (HeapTupleHasExternal(tup) || tup->t_len > TOAST_TUPLE_THRESHOLD)
+	{
+		int options = HEAP_INSERT_SKIP_FSM;
+
+		if (!state->rs_use_wal)
+			options |= HEAP_INSERT_SKIP_WAL;
+
+		/*
+		 * While rewriting the heap for VACUUM FULL / CLUSTER, make sure data
+		 * for the TOAST table are not logically decoded.  The main heap is
+		 * WAL-logged as XLOG FPI records, which are not logically decoded.
+		 */
+		options |= HEAP_INSERT_NO_LOGICAL;
+
 		heaptup = toast_insert_or_update(state->rs_new_rel, tup, NULL,
-										 HEAP_INSERT_SKIP_FSM |
-										 (state->rs_use_wal ?
-										  0 : HEAP_INSERT_SKIP_WAL));
+										 options);
+	}
 	else
 		heaptup = tup;
 
@@ -958,7 +973,7 @@ logical_end_heap_rewrite(RewriteState state)
 	while ((src = (RewriteMappingFile *) hash_seq_search(&seq_status)) != NULL)
 	{
 		if (FileSync(src->vfd) != 0)
-			ereport(ERROR,
+			ereport(data_sync_elevel(ERROR),
 					(errcode_for_file_access(),
 					 errmsg("could not fsync file \"%s\": %m", src->path)));
 		FileClose(src->vfd);
@@ -1159,10 +1174,16 @@ heap_xlog_logical_rewrite(XLogReaderState *r)
 	len = xlrec->num_mappings * sizeof(LogicalRewriteMappingData);
 
 	/* write out tail end of mapping file (again) */
+	errno = 0;
 	if (write(fd, data, len) != len)
+	{
+		/* if write didn't set errno, assume problem is no disk space */
+		if (errno == 0)
+			errno = ENOSPC;
 		ereport(ERROR,
 				(errcode_for_file_access(),
 				 errmsg("could not write to file \"%s\": %m", path)));
+	}
 
 	/*
 	 * Now fsync all previously written data. We could improve things and only
@@ -1170,7 +1191,7 @@ heap_xlog_logical_rewrite(XLogReaderState *r)
 	 * doesn't seem worth the trouble.
 	 */
 	if (pg_fsync(fd) != 0)
-		ereport(ERROR,
+		ereport(data_sync_elevel(ERROR),
 				(errcode_for_file_access(),
 				 errmsg("could not fsync file \"%s\": %m", path)));
 
@@ -1267,7 +1288,7 @@ CheckPointLogicalRewriteHeap(void)
 			 * but it's currently not deemed worth the effort.
 			 */
 			else if (pg_fsync(fd) != 0)
-				ereport(ERROR,
+				ereport(data_sync_elevel(ERROR),
 						(errcode_for_file_access(),
 						 errmsg("could not fsync file \"%s\": %m", path)));
 			CloseTransientFile(fd);

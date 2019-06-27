@@ -25,10 +25,12 @@
 #include "common/pg_lzcompress.h"
 #include "replication/origin.h"
 
+#ifndef FRONTEND
+#include "utils/memutils.h"
+#endif
+
 static bool allocate_recordbuf(XLogReaderState *state, uint32 reclength);
 
-static bool ValidXLogPageHeader(XLogReaderState *state, XLogRecPtr recptr,
-					XLogPageHeader hdr);
 static bool ValidXLogRecordHeader(XLogReaderState *state, XLogRecPtr RecPtr,
 				 XLogRecPtr PrevRecPtr, XLogRecord *record, bool randAccess);
 static bool ValidXLogRecord(XLogReaderState *state, XLogRecord *record,
@@ -159,6 +161,25 @@ allocate_recordbuf(XLogReaderState *state, uint32 reclength)
 
 	newSize += XLOG_BLCKSZ - (newSize % XLOG_BLCKSZ);
 	newSize = Max(newSize, 5 * Max(BLCKSZ, XLOG_BLCKSZ));
+
+#ifndef FRONTEND
+
+	/*
+	 * Note that in much unlucky circumstances, the random data read from a
+	 * recycled segment can cause this routine to be called with a size
+	 * causing a hard failure at allocation.  For a standby, this would cause
+	 * the instance to stop suddenly with a hard failure, preventing it to
+	 * retry fetching WAL from one of its sources which could allow it to move
+	 * on with replay without a manual restart. If the data comes from a past
+	 * recycled segment and is still valid, then the allocation may succeed
+	 * but record checks are going to fail so this would be short-lived.  If
+	 * the allocation fails because of a memory shortage, then this is not a
+	 * hard failure either per the guarantee given by MCXT_ALLOC_NO_OOM.
+	 */
+	if (!AllocSizeIsValid(newSize))
+		return false;
+
+#endif
 
 	if (state->readRecordBuf)
 		pfree(state->readRecordBuf);
@@ -530,7 +551,6 @@ ReadPageInternal(XLogReaderState *state, XLogRecPtr pageptr, int reqLen)
 	 */
 	if (targetSegNo != state->readSegNo && targetPageOff != 0)
 	{
-		XLogPageHeader hdr;
 		XLogRecPtr	targetSegmentPtr = pageptr - targetPageOff;
 
 		readLen = state->read_page(state, targetSegmentPtr, XLOG_BLCKSZ,
@@ -542,9 +562,8 @@ ReadPageInternal(XLogReaderState *state, XLogRecPtr pageptr, int reqLen)
 		/* we can be sure to have enough WAL available, we scrolled back */
 		Assert(readLen == XLOG_BLCKSZ);
 
-		hdr = (XLogPageHeader) state->readBuf;
-
-		if (!ValidXLogPageHeader(state, targetSegmentPtr, hdr))
+		if (!XLogReaderValidatePageHeader(state, targetSegmentPtr,
+										  state->readBuf))
 			goto err;
 	}
 
@@ -581,7 +600,7 @@ ReadPageInternal(XLogReaderState *state, XLogRecPtr pageptr, int reqLen)
 	/*
 	 * Now that we know we have the full header, validate it.
 	 */
-	if (!ValidXLogPageHeader(state, pageptr, hdr))
+	if (!XLogReaderValidatePageHeader(state, pageptr, (char *) hdr))
 		goto err;
 
 	/* update read state information */
@@ -706,15 +725,19 @@ ValidXLogRecord(XLogReaderState *state, XLogRecord *record, XLogRecPtr recptr)
 }
 
 /*
- * Validate a page header
+ * Validate a page header.
+ *
+ * Check if 'phdr' is valid as the header of the XLog page at position
+ * 'recptr'.
  */
-static bool
-ValidXLogPageHeader(XLogReaderState *state, XLogRecPtr recptr,
-					XLogPageHeader hdr)
+bool
+XLogReaderValidatePageHeader(XLogReaderState *state, XLogRecPtr recptr,
+							 char *phdr)
 {
 	XLogRecPtr	recaddr;
 	XLogSegNo	segno;
 	int32		offset;
+	XLogPageHeader hdr = (XLogPageHeader) phdr;
 
 	Assert((recptr % XLOG_BLCKSZ) == 0);
 
@@ -802,6 +825,11 @@ ValidXLogPageHeader(XLogReaderState *state, XLogRecPtr recptr,
 		return false;
 	}
 
+	/*
+	 * Check that the address on the page agrees with what we expected.
+	 * This check typically fails when an old WAL segment is recycled,
+	 * and hasn't yet been overwritten with new data yet.
+	 */
 	if (hdr->xlp_pageaddr != recaddr)
 	{
 		char		fname[MAXFNAMELEN];
@@ -1268,7 +1296,22 @@ DecodeXLogRecord(XLogReaderState *state, XLogRecord *record, char **errormsg)
 		{
 			if (state->main_data)
 				pfree(state->main_data);
-			state->main_data_bufsz = state->main_data_len;
+
+			/*
+			 * main_data_bufsz must be MAXALIGN'ed.  In many xlog record
+			 * types, we omit trailing struct padding on-disk to save a few
+			 * bytes; but compilers may generate accesses to the xlog struct
+			 * that assume that padding bytes are present.  If the palloc
+			 * request is not large enough to include such padding bytes then
+			 * we'll get valgrind complaints due to otherwise-harmless fetches
+			 * of the padding bytes.
+			 *
+			 * In addition, force the initial request to be reasonably large
+			 * so that we don't waste time with lots of trips through this
+			 * stanza.  BLCKSZ / 2 seems like a good compromise choice.
+			 */
+			state->main_data_bufsz = MAXALIGN(Max(state->main_data_len,
+												  BLCKSZ / 2));
 			state->main_data = palloc(state->main_data_bufsz);
 		}
 		memcpy(state->main_data, ptr, state->main_data_len);
@@ -1352,7 +1395,7 @@ RestoreBlockImage(XLogReaderState *record, uint8 block_id, char *page)
 {
 	DecodedBkpBlock *bkpb;
 	char	   *ptr;
-	char		tmp[BLCKSZ];
+	PGAlignedBlock tmp;
 
 	if (!record->blocks[block_id].in_use)
 		return false;
@@ -1365,7 +1408,7 @@ RestoreBlockImage(XLogReaderState *record, uint8 block_id, char *page)
 	if (bkpb->bimg_info & BKPIMAGE_IS_COMPRESSED)
 	{
 		/* If a backup block image is compressed, decompress it */
-		if (pglz_decompress(ptr, bkpb->bimg_len, tmp,
+		if (pglz_decompress(ptr, bkpb->bimg_len, tmp.data,
 							BLCKSZ - bkpb->hole_length) < 0)
 		{
 			report_invalid_record(record, "invalid compressed image at %X/%X, block %d",
@@ -1374,7 +1417,7 @@ RestoreBlockImage(XLogReaderState *record, uint8 block_id, char *page)
 								  block_id);
 			return false;
 		}
-		ptr = tmp;
+		ptr = tmp.data;
 	}
 
 	/* generate page, taking into account hole if necessary */

@@ -1975,18 +1975,22 @@ pgstat_update_heap_dead_tuples(Relation rel, int delta)
  * ----------
  */
 void
-AtEOXact_PgStat(bool isCommit)
+AtEOXact_PgStat(bool isCommit, bool parallel)
 {
 	PgStat_SubXactStatus *xact_state;
 
-	/*
-	 * Count transaction commit or abort.  (We use counters, not just bools,
-	 * in case the reporting message isn't sent right away.)
-	 */
-	if (isCommit)
-		pgStatXactCommit++;
-	else
-		pgStatXactRollback++;
+	/* Don't count parallel worker transaction stats */
+	if (!parallel)
+	{
+		/*
+		 * Count transaction commit or abort.  (We use counters, not just
+		 * bools, in case the reporting message isn't sent right away.)
+		 */
+		if (isCommit)
+			pgStatXactCommit++;
+		else
+			pgStatXactRollback++;
+	}
 
 	/*
 	 * Transfer transactional insert/update counts into the base tabstat
@@ -2620,7 +2624,7 @@ CreateSharedBackendStatus(void)
 
 	if (!found)
 	{
-		MemSet(BackendActivityBuffer, 0, size);
+		MemSet(BackendActivityBuffer, 0, BackendActivityBufferSize);
 
 		/* Initialize st_activity pointers. */
 		buffer = BackendActivityBuffer;
@@ -2681,30 +2685,65 @@ pgstat_initialize(void)
  *
  *	Initialize this backend's entry in the PgBackendStatus array.
  *	Called from InitPostgres.
- *	MyDatabaseId, session userid, and application_name must be set
- *	(hence, this cannot be combined with pgstat_initialize).
+ *	Apart from auxiliary processes, MyBackendId, MyDatabaseId,
+ *	session userid, and application_name must be set for a
+ *	backend (hence, this cannot be combined with pgstat_initialize).
+ *	Note also that we must be inside a transaction if this isn't an aux
+ *	process, as we may need to do encoding conversion on some strings.
  * ----------
  */
 void
 pgstat_bestart(void)
 {
-	TimestampTz proc_start_timestamp;
-	Oid			userid;
-	SockAddr	clientaddr;
-	volatile PgBackendStatus *beentry;
+	volatile PgBackendStatus *vbeentry = MyBEEntry;
+	PgBackendStatus lbeentry;
+#ifdef USE_SSL
+	PgBackendSSLStatus lsslstatus;
+#endif
+
+	/* pgstats state must be initialized from pgstat_initialize() */
+	Assert(vbeentry != NULL);
 
 	/*
-	 * To minimize the time spent modifying the PgBackendStatus entry, fetch
-	 * all the needed data first.
+	 * To minimize the time spent modifying the PgBackendStatus entry, and
+	 * avoid risk of errors inside the critical section, we first copy the
+	 * shared-memory struct to a local variable, then modify the data in the
+	 * local variable, then copy the local variable back to shared memory.
+	 * Only the last step has to be inside the critical section.
 	 *
+	 * Most of the data we copy from shared memory is just going to be
+	 * overwritten, but the struct's not so large that it's worth the
+	 * maintenance hassle to copy only the needful fields.
+	 */
+	memcpy(&lbeentry,
+		   (char *) vbeentry,
+		   sizeof(PgBackendStatus));
+
+	/* This struct can just start from zeroes each time, though */
+#ifdef USE_SSL
+	memset(&lsslstatus, 0, sizeof(lsslstatus));
+#endif
+
+	/*
+	 * Now fill in all the fields of lbeentry, except for strings that are
+	 * out-of-line data.  Those have to be handled separately, below.
+	 */
+	lbeentry.st_procpid = MyProcPid;
+
+	/*
 	 * If we have a MyProcPort, use its session start time (for consistency,
 	 * and to save a kernel call).
 	 */
 	if (MyProcPort)
-		proc_start_timestamp = MyProcPort->SessionStartTime;
+		lbeentry.st_proc_start_timestamp = MyProcPort->SessionStartTime;
 	else
-		proc_start_timestamp = GetCurrentTimestamp();
-	userid = GetSessionUserId();
+		lbeentry.st_proc_start_timestamp = GetCurrentTimestamp();
+
+	lbeentry.st_activity_start_timestamp = 0;
+	lbeentry.st_state_start_timestamp = 0;
+	lbeentry.st_xact_start_timestamp = 0;
+	lbeentry.st_databaseid = MyDatabaseId;
+	lbeentry.st_userid = GetSessionUserId();
 
 	/*
 	 * We may not have a MyProcPort (eg, if this is the autovacuum process).
@@ -2712,61 +2751,32 @@ pgstat_bestart(void)
 	 * pg_stat_get_backend_client_addr and pg_stat_get_backend_client_port.
 	 */
 	if (MyProcPort)
-		memcpy(&clientaddr, &MyProcPort->raddr, sizeof(clientaddr));
+		memcpy(&lbeentry.st_clientaddr, &MyProcPort->raddr,
+			   sizeof(lbeentry.st_clientaddr));
 	else
-		MemSet(&clientaddr, 0, sizeof(clientaddr));
+		MemSet(&lbeentry.st_clientaddr, 0, sizeof(lbeentry.st_clientaddr));
 
-	/*
-	 * Initialize my status entry, following the protocol of bumping
-	 * st_changecount before and after; and make sure it's even afterwards. We
-	 * use a volatile pointer here to ensure the compiler doesn't try to get
-	 * cute.
-	 */
-	beentry = MyBEEntry;
-	do
-	{
-		pgstat_increment_changecount_before(beentry);
-	} while ((beentry->st_changecount & 1) == 0);
-
-	beentry->st_procpid = MyProcPid;
-	beentry->st_proc_start_timestamp = proc_start_timestamp;
-	beentry->st_activity_start_timestamp = 0;
-	beentry->st_state_start_timestamp = 0;
-	beentry->st_xact_start_timestamp = 0;
-	beentry->st_databaseid = MyDatabaseId;
-	beentry->st_userid = userid;
-	beentry->st_clientaddr = clientaddr;
-	if (MyProcPort && MyProcPort->remote_hostname)
-		strlcpy(beentry->st_clienthostname, MyProcPort->remote_hostname,
-				NAMEDATALEN);
-	else
-		beentry->st_clienthostname[0] = '\0';
 #ifdef USE_SSL
 	if (MyProcPort && MyProcPort->ssl != NULL)
 	{
-		beentry->st_ssl = true;
-		beentry->st_sslstatus->ssl_bits = be_tls_get_cipher_bits(MyProcPort);
-		beentry->st_sslstatus->ssl_compression = be_tls_get_compression(MyProcPort);
-		be_tls_get_version(MyProcPort, beentry->st_sslstatus->ssl_version, NAMEDATALEN);
-		be_tls_get_cipher(MyProcPort, beentry->st_sslstatus->ssl_cipher, NAMEDATALEN);
-		be_tls_get_peerdn_name(MyProcPort, beentry->st_sslstatus->ssl_clientdn, NAMEDATALEN);
+		lbeentry.st_ssl = true;
+		lsslstatus.ssl_bits = be_tls_get_cipher_bits(MyProcPort);
+		lsslstatus.ssl_compression = be_tls_get_compression(MyProcPort);
+		be_tls_get_version(MyProcPort, lsslstatus.ssl_version, NAMEDATALEN);
+		be_tls_get_cipher(MyProcPort, lsslstatus.ssl_cipher, NAMEDATALEN);
+		be_tls_get_peerdn_name(MyProcPort, lsslstatus.ssl_clientdn, NAMEDATALEN);
 	}
 	else
 	{
-		beentry->st_ssl = false;
+		lbeentry.st_ssl = false;
 	}
 #else
-	beentry->st_ssl = false;
+	lbeentry.st_ssl = false;
 #endif
-	beentry->st_state = STATE_UNDEFINED;
-	beentry->st_appname[0] = '\0';
-	beentry->st_activity[0] = '\0';
-	/* Also make sure the last byte in each string area is always 0 */
-	beentry->st_clienthostname[NAMEDATALEN - 1] = '\0';
-	beentry->st_appname[NAMEDATALEN - 1] = '\0';
-	beentry->st_activity[pgstat_track_activity_query_size - 1] = '\0';
-	beentry->st_progress_command = PROGRESS_COMMAND_INVALID;
-	beentry->st_progress_command_target = InvalidOid;
+
+	lbeentry.st_state = STATE_UNDEFINED;
+	lbeentry.st_progress_command = PROGRESS_COMMAND_INVALID;
+	lbeentry.st_progress_command_target = InvalidOid;
 
 	/*
 	 * we don't zero st_progress_param here to save cycles; nobody should
@@ -2774,7 +2784,42 @@ pgstat_bestart(void)
 	 * than PROGRESS_COMMAND_INVALID
 	 */
 
-	pgstat_increment_changecount_after(beentry);
+	/*
+	 * We're ready to enter the critical section that fills the shared-memory
+	 * status entry.  We follow the protocol of bumping st_changecount before
+	 * and after; and make sure it's even afterwards.  We use a volatile
+	 * pointer here to ensure the compiler doesn't try to get cute.
+	 */
+	PGSTAT_BEGIN_WRITE_ACTIVITY(vbeentry);
+
+	/* make sure we'll memcpy the same st_changecount back */
+	lbeentry.st_changecount = vbeentry->st_changecount;
+
+	memcpy((char *) vbeentry,
+		   &lbeentry,
+		   sizeof(PgBackendStatus));
+
+	/*
+	 * We can write the out-of-line strings and structs using the pointers
+	 * that are in lbeentry; this saves some de-volatilizing messiness.
+	 */
+	lbeentry.st_appname[0] = '\0';
+	if (MyProcPort && MyProcPort->remote_hostname)
+		strlcpy(lbeentry.st_clienthostname, MyProcPort->remote_hostname,
+				NAMEDATALEN);
+	else
+		lbeentry.st_clienthostname[0] = '\0';
+	lbeentry.st_activity[0] = '\0';
+	/* Also make sure the last byte in each string area is always 0 */
+	lbeentry.st_appname[NAMEDATALEN - 1] = '\0';
+	lbeentry.st_clienthostname[NAMEDATALEN - 1] = '\0';
+	lbeentry.st_activity[pgstat_track_activity_query_size - 1] = '\0';
+
+#ifdef USE_SSL
+	memcpy(lbeentry.st_sslstatus, &lsslstatus, sizeof(PgBackendSSLStatus));
+#endif
+
+	PGSTAT_END_WRITE_ACTIVITY(vbeentry);
 
 	/* Update app name to current GUC setting */
 	if (application_name)
@@ -2809,11 +2854,11 @@ pgstat_beshutdown_hook(int code, Datum arg)
 	 * before and after.  We use a volatile pointer here to ensure the
 	 * compiler doesn't try to get cute.
 	 */
-	pgstat_increment_changecount_before(beentry);
+	PGSTAT_BEGIN_WRITE_ACTIVITY(beentry);
 
 	beentry->st_procpid = 0;	/* mark invalid */
 
-	pgstat_increment_changecount_after(beentry);
+	PGSTAT_END_WRITE_ACTIVITY(beentry);
 }
 
 
@@ -2852,7 +2897,7 @@ pgstat_report_activity(BackendState state, const char *cmd_str)
 			 * non-disabled state.  As our final update, change the state and
 			 * clear fields we will not be updating anymore.
 			 */
-			pgstat_increment_changecount_before(beentry);
+			PGSTAT_BEGIN_WRITE_ACTIVITY(beentry);
 			beentry->st_state = STATE_DISABLED;
 			beentry->st_state_start_timestamp = 0;
 			beentry->st_activity[0] = '\0';
@@ -2860,14 +2905,14 @@ pgstat_report_activity(BackendState state, const char *cmd_str)
 			/* st_xact_start_timestamp and wait_event_info are also disabled */
 			beentry->st_xact_start_timestamp = 0;
 			proc->wait_event_info = 0;
-			pgstat_increment_changecount_after(beentry);
+			PGSTAT_END_WRITE_ACTIVITY(beentry);
 		}
 		return;
 	}
 
 	/*
-	 * To minimize the time spent modifying the entry, fetch all the needed
-	 * data first.
+	 * To minimize the time spent modifying the entry, and avoid risk of
+	 * errors inside the critical section, fetch all the needed data first.
 	 */
 	start_timestamp = GetCurrentStatementStartTimestamp();
 	if (cmd_str != NULL)
@@ -2880,7 +2925,7 @@ pgstat_report_activity(BackendState state, const char *cmd_str)
 	/*
 	 * Now update the status entry
 	 */
-	pgstat_increment_changecount_before(beentry);
+	PGSTAT_BEGIN_WRITE_ACTIVITY(beentry);
 
 	beentry->st_state = state;
 	beentry->st_state_start_timestamp = current_timestamp;
@@ -2892,7 +2937,7 @@ pgstat_report_activity(BackendState state, const char *cmd_str)
 		beentry->st_activity_start_timestamp = start_timestamp;
 	}
 
-	pgstat_increment_changecount_after(beentry);
+	PGSTAT_END_WRITE_ACTIVITY(beentry);
 }
 
 /*-----------
@@ -2910,11 +2955,11 @@ pgstat_progress_start_command(ProgressCommandType cmdtype, Oid relid)
 	if (!beentry || !pgstat_track_activities)
 		return;
 
-	pgstat_increment_changecount_before(beentry);
+	PGSTAT_BEGIN_WRITE_ACTIVITY(beentry);
 	beentry->st_progress_command = cmdtype;
 	beentry->st_progress_command_target = relid;
 	MemSet(&beentry->st_progress_param, 0, sizeof(beentry->st_progress_param));
-	pgstat_increment_changecount_after(beentry);
+	PGSTAT_END_WRITE_ACTIVITY(beentry);
 }
 
 /*-----------
@@ -2933,9 +2978,9 @@ pgstat_progress_update_param(int index, int64 val)
 	if (!beentry || !pgstat_track_activities)
 		return;
 
-	pgstat_increment_changecount_before(beentry);
+	PGSTAT_BEGIN_WRITE_ACTIVITY(beentry);
 	beentry->st_progress_param[index] = val;
-	pgstat_increment_changecount_after(beentry);
+	PGSTAT_END_WRITE_ACTIVITY(beentry);
 }
 
 /*-----------
@@ -2955,7 +3000,7 @@ pgstat_progress_update_multi_param(int nparam, const int *index,
 	if (!beentry || !pgstat_track_activities || nparam == 0)
 		return;
 
-	pgstat_increment_changecount_before(beentry);
+	PGSTAT_BEGIN_WRITE_ACTIVITY(beentry);
 
 	for (i = 0; i < nparam; ++i)
 	{
@@ -2964,7 +3009,7 @@ pgstat_progress_update_multi_param(int nparam, const int *index,
 		beentry->st_progress_param[index[i]] = val[i];
 	}
 
-	pgstat_increment_changecount_after(beentry);
+	PGSTAT_END_WRITE_ACTIVITY(beentry);
 }
 
 /*-----------
@@ -2985,10 +3030,10 @@ pgstat_progress_end_command(void)
 		&& beentry->st_progress_command == PROGRESS_COMMAND_INVALID)
 		return;
 
-	pgstat_increment_changecount_before(beentry);
+	PGSTAT_BEGIN_WRITE_ACTIVITY(beentry);
 	beentry->st_progress_command = PROGRESS_COMMAND_INVALID;
 	beentry->st_progress_command_target = InvalidOid;
-	pgstat_increment_changecount_after(beentry);
+	PGSTAT_END_WRITE_ACTIVITY(beentry);
 }
 
 /* ----------
@@ -3014,12 +3059,12 @@ pgstat_report_appname(const char *appname)
 	 * st_changecount before and after.  We use a volatile pointer here to
 	 * ensure the compiler doesn't try to get cute.
 	 */
-	pgstat_increment_changecount_before(beentry);
+	PGSTAT_BEGIN_WRITE_ACTIVITY(beentry);
 
 	memcpy((char *) beentry->st_appname, appname, len);
 	beentry->st_appname[len] = '\0';
 
-	pgstat_increment_changecount_after(beentry);
+	PGSTAT_END_WRITE_ACTIVITY(beentry);
 }
 
 /*
@@ -3039,9 +3084,11 @@ pgstat_report_xact_timestamp(TimestampTz tstamp)
 	 * st_changecount before and after.  We use a volatile pointer here to
 	 * ensure the compiler doesn't try to get cute.
 	 */
-	pgstat_increment_changecount_before(beentry);
+	PGSTAT_BEGIN_WRITE_ACTIVITY(beentry);
+
 	beentry->st_xact_start_timestamp = tstamp;
-	pgstat_increment_changecount_after(beentry);
+
+	PGSTAT_END_WRITE_ACTIVITY(beentry);
 }
 
 /* ----------
@@ -3058,6 +3105,7 @@ pgstat_read_current_status(void)
 	LocalPgBackendStatus *localtable;
 	LocalPgBackendStatus *localentry;
 	char	   *localappname,
+			   *localclienthostname,
 			   *localactivity;
 #ifdef USE_SSL
 	PgBackendSSLStatus *localsslstatus;
@@ -3074,6 +3122,9 @@ pgstat_read_current_status(void)
 		MemoryContextAlloc(pgStatLocalContext,
 						   sizeof(LocalPgBackendStatus) * MaxBackends);
 	localappname = (char *)
+		MemoryContextAlloc(pgStatLocalContext,
+						   NAMEDATALEN * MaxBackends);
+	localclienthostname = (char *)
 		MemoryContextAlloc(pgStatLocalContext,
 						   NAMEDATALEN * MaxBackends);
 	localactivity = (char *)
@@ -3103,22 +3154,28 @@ pgstat_read_current_status(void)
 			int			before_changecount;
 			int			after_changecount;
 
-			pgstat_save_changecount_before(beentry, before_changecount);
+			pgstat_begin_read_activity(beentry, before_changecount);
 
 			localentry->backendStatus.st_procpid = beentry->st_procpid;
+			/* Skip all the data-copying work if entry is not in use */
 			if (localentry->backendStatus.st_procpid > 0)
 			{
 				memcpy(&localentry->backendStatus, (char *) beentry, sizeof(PgBackendStatus));
 
 				/*
+				 * For each PgBackendStatus field that is a pointer, copy the
+				 * pointed-to data, then adjust the local copy of the pointer
+				 * field to point at the local copy of the data.
+				 *
 				 * strcpy is safe even if the string is modified concurrently,
 				 * because there's always a \0 at the end of the buffer.
 				 */
 				strcpy(localappname, (char *) beentry->st_appname);
 				localentry->backendStatus.st_appname = localappname;
+				strcpy(localclienthostname, (char *) beentry->st_clienthostname);
+				localentry->backendStatus.st_clienthostname = localclienthostname;
 				strcpy(localactivity, (char *) beentry->st_activity);
 				localentry->backendStatus.st_activity = localactivity;
-				localentry->backendStatus.st_ssl = beentry->st_ssl;
 #ifdef USE_SSL
 				if (beentry->st_ssl)
 				{
@@ -3128,9 +3185,10 @@ pgstat_read_current_status(void)
 #endif
 			}
 
-			pgstat_save_changecount_after(beentry, after_changecount);
-			if (before_changecount == after_changecount &&
-				(before_changecount & 1) == 0)
+			pgstat_end_read_activity(beentry, after_changecount);
+
+			if (pgstat_read_activity_complete(before_changecount,
+											  after_changecount))
 				break;
 
 			/* Make sure we can break out of loop if stuck... */
@@ -3147,6 +3205,7 @@ pgstat_read_current_status(void)
 
 			localentry++;
 			localappname += NAMEDATALEN;
+			localclienthostname += NAMEDATALEN;
 			localactivity += pgstat_track_activity_query_size;
 #ifdef USE_SSL
 			localsslstatus++;
@@ -3287,14 +3346,14 @@ pgstat_get_backend_current_activity(int pid, bool checkUser)
 			int			before_changecount;
 			int			after_changecount;
 
-			pgstat_save_changecount_before(vbeentry, before_changecount);
+			pgstat_begin_read_activity(vbeentry, before_changecount);
 
 			found = (vbeentry->st_procpid == pid);
 
-			pgstat_save_changecount_after(vbeentry, after_changecount);
+			pgstat_end_read_activity(vbeentry, after_changecount);
 
-			if (before_changecount == after_changecount &&
-				(before_changecount & 1) == 0)
+			if (pgstat_read_activity_complete(before_changecount,
+											  after_changecount))
 				break;
 
 			/* Make sure we can break out of loop if stuck... */
@@ -4063,7 +4122,7 @@ get_dbstat_filename(bool permanent, bool tempname, Oid databaseid,
 					   pgstat_stat_directory,
 					   databaseid,
 					   tempname ? "tmp" : "stat");
-	if (printed > len)
+	if (printed >= len)
 		elog(ERROR, "overlength pgstat path");
 }
 

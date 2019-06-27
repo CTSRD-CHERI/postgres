@@ -61,18 +61,15 @@ writeListPage(Relation index, Buffer buffer,
 				size = 0;
 	OffsetNumber l,
 				off;
-	char	   *workspace;
+	PGAlignedBlock workspace;
 	char	   *ptr;
-
-	/* workspace could be a local array; we use palloc for alignment */
-	workspace = palloc(BLCKSZ);
 
 	START_CRIT_SECTION();
 
 	GinInitBuffer(buffer, GIN_LIST);
 
 	off = FirstOffsetNumber;
-	ptr = workspace;
+	ptr = workspace.data;
 
 	for (i = 0; i < ntuples; i++)
 	{
@@ -124,7 +121,7 @@ writeListPage(Relation index, Buffer buffer,
 		XLogRegisterData((char *) &data, sizeof(ginxlogInsertListPage));
 
 		XLogRegisterBuffer(0, buffer, REGBUF_WILL_INIT);
-		XLogRegisterBufData(0, workspace, size);
+		XLogRegisterBufData(0, workspace.data, size);
 
 		recptr = XLogInsert(RM_GIN_ID, XLOG_GIN_INSERT_LISTPAGE);
 		PageSetLSN(page, recptr);
@@ -136,8 +133,6 @@ writeListPage(Relation index, Buffer buffer,
 	UnlockReleaseBuffer(buffer);
 
 	END_CRIT_SECTION();
-
-	pfree(workspace);
 
 	return freesize;
 }
@@ -438,8 +433,12 @@ ginHeapTupleFastInsert(GinState *ginstate, GinTupleCollector *collector)
 
 	END_CRIT_SECTION();
 
+	/*
+	 * Since it could contend with concurrent cleanup process we cleanup
+	 * pending list not forcibly.
+	 */
 	if (needCleanup)
-		ginInsertCleanup(ginstate, false, true, NULL);
+		ginInsertCleanup(ginstate, false, true, false, NULL);
 }
 
 /*
@@ -725,7 +724,8 @@ processPendingPage(BuildAccumulator *accum, KeyArray *ka,
  */
 void
 ginInsertCleanup(GinState *ginstate, bool full_clean,
-				 bool fill_fsm, IndexBulkDeleteResult *stats)
+				 bool fill_fsm, bool forceCleanup,
+				 IndexBulkDeleteResult *stats)
 {
 	Relation	index = ginstate->index;
 	Buffer		metabuffer,
@@ -742,7 +742,6 @@ ginInsertCleanup(GinState *ginstate, bool full_clean,
 	bool		cleanupFinish = false;
 	bool		fsm_vac = false;
 	Size		workMemory;
-	bool		inVacuum = (stats == NULL);
 
 	/*
 	 * We would like to prevent concurrent cleanup process. For that we will
@@ -751,7 +750,7 @@ ginInsertCleanup(GinState *ginstate, bool full_clean,
 	 * insertion into pending list
 	 */
 
-	if (inVacuum)
+	if (forceCleanup)
 	{
 		/*
 		 * We are called from [auto]vacuum/analyze or gin_clean_pending_list()
@@ -1014,7 +1013,7 @@ gin_clean_pending_list(PG_FUNCTION_ARGS)
 
 	memset(&stats, 0, sizeof(stats));
 	initGinState(&ginstate, indexRel);
-	ginInsertCleanup(&ginstate, true, true, &stats);
+	ginInsertCleanup(&ginstate, true, true, true, &stats);
 
 	index_close(indexRel, AccessShareLock);
 

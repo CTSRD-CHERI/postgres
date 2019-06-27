@@ -2096,9 +2096,31 @@ check_object_ownership(Oid roleid, ObjectType objtype, ObjectAddress address,
 		case OBJECT_TYPE:
 		case OBJECT_DOMAIN:
 		case OBJECT_ATTRIBUTE:
-		case OBJECT_DOMCONSTRAINT:
 			if (!pg_type_ownercheck(address.objectId, roleid))
 				aclcheck_error_type(ACLCHECK_NOT_OWNER, address.objectId);
+			break;
+		case OBJECT_DOMCONSTRAINT:
+			{
+				HeapTuple	tuple;
+				Oid			contypid;
+
+				tuple = SearchSysCache1(CONSTROID,
+										ObjectIdGetDatum(address.objectId));
+				if (!HeapTupleIsValid(tuple))
+					elog(ERROR, "constraint with OID %u does not exist",
+						 address.objectId);
+
+				contypid = ((Form_pg_constraint) GETSTRUCT(tuple))->contypid;
+
+				ReleaseSysCache(tuple);
+
+				/*
+				 * Fallback to type ownership check in this case as this is
+				 * what domain constraints rely on.
+				 */
+				if (!pg_type_ownercheck(contypid, roleid))
+					aclcheck_error_type(ACLCHECK_NOT_OWNER, contypid);
+			}
 			break;
 		case OBJECT_AGGREGATE:
 		case OBJECT_FUNCTION:
@@ -2552,6 +2574,7 @@ getObjectDescription(const ObjectAddress *object)
 			{
 				HeapTuple	collTup;
 				Form_pg_collation coll;
+				char	   *nspname;
 
 				collTup = SearchSysCache1(COLLOID,
 										  ObjectIdGetDatum(object->objectId));
@@ -2559,8 +2582,16 @@ getObjectDescription(const ObjectAddress *object)
 					elog(ERROR, "cache lookup failed for collation %u",
 						 object->objectId);
 				coll = (Form_pg_collation) GETSTRUCT(collTup);
+
+				/* Qualify the name if not visible in search path */
+				if (CollationIsVisible(object->objectId))
+					nspname = NULL;
+				else
+					nspname = get_namespace_name(coll->collnamespace);
+
 				appendStringInfo(&buffer, _("collation %s"),
-								 NameStr(coll->collname));
+								 quote_qualified_identifier(nspname,
+															NameStr(coll->collname)));
 				ReleaseSysCache(collTup);
 				break;
 			}
@@ -2600,14 +2631,25 @@ getObjectDescription(const ObjectAddress *object)
 		case OCLASS_CONVERSION:
 			{
 				HeapTuple	conTup;
+				Form_pg_conversion conv;
+				char	   *nspname;
 
 				conTup = SearchSysCache1(CONVOID,
 										 ObjectIdGetDatum(object->objectId));
 				if (!HeapTupleIsValid(conTup))
 					elog(ERROR, "cache lookup failed for conversion %u",
 						 object->objectId);
+				conv = (Form_pg_conversion) GETSTRUCT(conTup);
+
+				/* Qualify the name if not visible in search path */
+				if (ConversionIsVisible(object->objectId))
+					nspname = NULL;
+				else
+					nspname = get_namespace_name(conv->connamespace);
+
 				appendStringInfo(&buffer, _("conversion %s"),
-				 NameStr(((Form_pg_conversion) GETSTRUCT(conTup))->conname));
+								 quote_qualified_identifier(nspname,
+															NameStr(conv->conname)));
 				ReleaseSysCache(conTup);
 				break;
 			}
@@ -2914,14 +2956,25 @@ getObjectDescription(const ObjectAddress *object)
 		case OCLASS_TSPARSER:
 			{
 				HeapTuple	tup;
+				Form_pg_ts_parser prsForm;
+				char	   *nspname;
 
 				tup = SearchSysCache1(TSPARSEROID,
 									  ObjectIdGetDatum(object->objectId));
 				if (!HeapTupleIsValid(tup))
 					elog(ERROR, "cache lookup failed for text search parser %u",
 						 object->objectId);
+				prsForm = (Form_pg_ts_parser) GETSTRUCT(tup);
+
+				/* Qualify the name if not visible in search path */
+				if (TSParserIsVisible(object->objectId))
+					nspname = NULL;
+				else
+					nspname = get_namespace_name(prsForm->prsnamespace);
+
 				appendStringInfo(&buffer, _("text search parser %s"),
-					 NameStr(((Form_pg_ts_parser) GETSTRUCT(tup))->prsname));
+								 quote_qualified_identifier(nspname,
+															NameStr(prsForm->prsname)));
 				ReleaseSysCache(tup);
 				break;
 			}
@@ -2929,14 +2982,25 @@ getObjectDescription(const ObjectAddress *object)
 		case OCLASS_TSDICT:
 			{
 				HeapTuple	tup;
+				Form_pg_ts_dict dictForm;
+				char	   *nspname;
 
 				tup = SearchSysCache1(TSDICTOID,
 									  ObjectIdGetDatum(object->objectId));
 				if (!HeapTupleIsValid(tup))
 					elog(ERROR, "cache lookup failed for text search dictionary %u",
 						 object->objectId);
+				dictForm = (Form_pg_ts_dict) GETSTRUCT(tup);
+
+				/* Qualify the name if not visible in search path */
+				if (TSDictionaryIsVisible(object->objectId))
+					nspname = NULL;
+				else
+					nspname = get_namespace_name(dictForm->dictnamespace);
+
 				appendStringInfo(&buffer, _("text search dictionary %s"),
-					  NameStr(((Form_pg_ts_dict) GETSTRUCT(tup))->dictname));
+								 quote_qualified_identifier(nspname,
+															NameStr(dictForm->dictname)));
 				ReleaseSysCache(tup);
 				break;
 			}
@@ -2944,14 +3008,25 @@ getObjectDescription(const ObjectAddress *object)
 		case OCLASS_TSTEMPLATE:
 			{
 				HeapTuple	tup;
+				Form_pg_ts_template tmplForm;
+				char	   *nspname;
 
 				tup = SearchSysCache1(TSTEMPLATEOID,
 									  ObjectIdGetDatum(object->objectId));
 				if (!HeapTupleIsValid(tup))
 					elog(ERROR, "cache lookup failed for text search template %u",
 						 object->objectId);
+				tmplForm = (Form_pg_ts_template) GETSTRUCT(tup);
+
+				/* Qualify the name if not visible in search path */
+				if (TSTemplateIsVisible(object->objectId))
+					nspname = NULL;
+				else
+					nspname = get_namespace_name(tmplForm->tmplnamespace);
+
 				appendStringInfo(&buffer, _("text search template %s"),
-				  NameStr(((Form_pg_ts_template) GETSTRUCT(tup))->tmplname));
+								 quote_qualified_identifier(nspname,
+															NameStr(tmplForm->tmplname)));
 				ReleaseSysCache(tup);
 				break;
 			}
@@ -2959,14 +3034,25 @@ getObjectDescription(const ObjectAddress *object)
 		case OCLASS_TSCONFIG:
 			{
 				HeapTuple	tup;
+				Form_pg_ts_config cfgForm;
+				char	   *nspname;
 
 				tup = SearchSysCache1(TSCONFIGOID,
 									  ObjectIdGetDatum(object->objectId));
 				if (!HeapTupleIsValid(tup))
 					elog(ERROR, "cache lookup failed for text search configuration %u",
 						 object->objectId);
+				cfgForm = (Form_pg_ts_config) GETSTRUCT(tup);
+
+				/* Qualify the name if not visible in search path */
+				if (TSConfigIsVisible(object->objectId))
+					nspname = NULL;
+				else
+					nspname = get_namespace_name(cfgForm->cfgnamespace);
+
 				appendStringInfo(&buffer, _("text search configuration %s"),
-					 NameStr(((Form_pg_ts_config) GETSTRUCT(tup))->cfgname));
+								 quote_qualified_identifier(nspname,
+															NameStr(cfgForm->cfgname)));
 				ReleaseSysCache(tup);
 				break;
 			}
@@ -3512,7 +3598,10 @@ pg_identify_object_as_address(PG_FUNCTION_ARGS)
 	pfree(identity);
 
 	/* object_names */
-	values[1] = PointerGetDatum(strlist_to_textarray(names));
+	if (names != NIL)
+		values[1] = PointerGetDatum(strlist_to_textarray(names));
+	else
+		values[1] = PointerGetDatum(construct_empty_array(TEXTOID));
 	nulls[1] = false;
 
 	/* object_args */
@@ -4739,10 +4828,12 @@ strlist_to_textarray(List *list)
 {
 	ArrayType  *arr;
 	Datum	   *datums;
+	bool	   *nulls;
 	int			j = 0;
 	ListCell   *cell;
 	MemoryContext memcxt;
 	MemoryContext oldcxt;
+	int			lb[1];
 
 	memcxt = AllocSetContextCreate(CurrentMemoryContext,
 								   "strlist to array",
@@ -4750,17 +4841,25 @@ strlist_to_textarray(List *list)
 	oldcxt = MemoryContextSwitchTo(memcxt);
 
 	datums = palloc(sizeof(text *) * list_length(list));
+	nulls = palloc(sizeof(bool) * list_length(list));
 	foreach(cell, list)
 	{
 		char	   *name = lfirst(cell);
 
-		datums[j++] = CStringGetTextDatum(name);
+		if (name)
+		{
+			nulls[j] = false;
+			datums[j++] = CStringGetTextDatum(name);
+		}
+		else
+			nulls[j++] = true;
 	}
 
 	MemoryContextSwitchTo(oldcxt);
 
-	arr = construct_array(datums, list_length(list),
-						  TEXTOID, -1, false, 'i');
+	lb[0] = 1;
+	arr = construct_md_array(datums, nulls, 1, &j,
+							 lb, TEXTOID, -1, false, 'i');
 	MemoryContextDelete(memcxt);
 
 	return arr;

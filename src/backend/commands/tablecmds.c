@@ -279,7 +279,7 @@ static void MergeAttributesIntoExisting(Relation child_rel, Relation parent_rel)
 static void MergeConstraintsIntoExisting(Relation child_rel, Relation parent_rel);
 static void StoreCatalogInheritance(Oid relationId, List *supers);
 static void StoreCatalogInheritance1(Oid relationId, Oid parentOid,
-						 int16 seqNumber, Relation inhRelation);
+						 int32 seqNumber, Relation inhRelation);
 static int	findAttrByName(const char *attributeName, List *schema);
 static void AlterIndexNamespaces(Relation classRel, Relation rel,
 				   Oid oldNspOid, Oid newNspOid, ObjectAddresses *objsMoved);
@@ -385,6 +385,9 @@ static void ATPrepAlterColumnType(List **wqueue,
 static bool ATColumnChangeRequiresRewrite(Node *expr, AttrNumber varattno);
 static ObjectAddress ATExecAlterColumnType(AlteredTableInfo *tab, Relation rel,
 					  AlterTableCmd *cmd, LOCKMODE lockmode);
+static void RememberConstraintForRebuilding(Oid conoid, AlteredTableInfo *tab,
+											DependencyType deptype);
+static void RememberIndexForRebuilding(Oid indoid, AlteredTableInfo *tab);
 static ObjectAddress ATExecAlterColumnGenericOptions(Relation rel, const char *colName,
 								List *options, LOCKMODE lockmode);
 static void ATPostAlterTypeCleanup(List **wqueue, AlteredTableInfo *tab,
@@ -1021,13 +1024,14 @@ ExecuteTruncate(TruncateStmt *stmt)
 		Relation	rel;
 		bool		recurse = interpretInhOption(rv->inhOpt);
 		Oid			myrelid;
+		LOCKMODE	lockmode = AccessExclusiveLock;
 
-		rel = heap_openrv(rv, AccessExclusiveLock);
+		rel = heap_openrv(rv, lockmode);
 		myrelid = RelationGetRelid(rel);
 		/* don't throw error for "TRUNCATE foo, foo" */
 		if (list_member_oid(relids, myrelid))
 		{
-			heap_close(rel, AccessExclusiveLock);
+			heap_close(rel, lockmode);
 			continue;
 		}
 		truncate_check_rel(rel);
@@ -1039,7 +1043,7 @@ ExecuteTruncate(TruncateStmt *stmt)
 			ListCell   *child;
 			List	   *children;
 
-			children = find_all_inheritors(myrelid, AccessExclusiveLock, NULL);
+			children = find_all_inheritors(myrelid, lockmode, NULL);
 
 			foreach(child, children)
 			{
@@ -1050,6 +1054,22 @@ ExecuteTruncate(TruncateStmt *stmt)
 
 				/* find_all_inheritors already got lock */
 				rel = heap_open(childrelid, NoLock);
+
+				/*
+				 * It is possible that the parent table has children that are
+				 * temp tables of other backends.  We cannot safely access
+				 * such tables (because of buffering issues), and the best
+				 * thing to do is to silently ignore them.  Note that this
+				 * check is the same as one of the checks done in
+				 * truncate_check_rel() called below, still it is kept
+				 * here for simplicity.
+				 */
+				if (RELATION_IS_OTHER_TEMP(rel))
+				{
+					heap_close(rel, lockmode);
+					continue;
+				}
+
 				truncate_check_rel(rel);
 				rels = lappend(rels, rel);
 				relids = lappend_oid(relids, childrelid);
@@ -1225,19 +1245,22 @@ ExecuteTruncate(TruncateStmt *stmt)
 				heap_create_init_fork(rel);
 
 			heap_relid = RelationGetRelid(rel);
-			toast_relid = rel->rd_rel->reltoastrelid;
 
 			/*
 			 * The same for the toast table, if any.
 			 */
+			toast_relid = rel->rd_rel->reltoastrelid;
 			if (OidIsValid(toast_relid))
 			{
-				rel = relation_open(toast_relid, AccessExclusiveLock);
-				RelationSetNewRelfilenode(rel, rel->rd_rel->relpersistence,
+				Relation	toastrel = relation_open(toast_relid,
+													 AccessExclusiveLock);
+
+				RelationSetNewRelfilenode(toastrel,
+										  toastrel->rd_rel->relpersistence,
 										  RecentXmin, minmulti);
-				if (rel->rd_rel->relpersistence == RELPERSISTENCE_UNLOGGED)
-					heap_create_init_fork(rel);
-				heap_close(rel, NoLock);
+				if (toastrel->rd_rel->relpersistence == RELPERSISTENCE_UNLOGGED)
+					heap_create_init_fork(toastrel);
+				heap_close(toastrel, NoLock);
 			}
 
 			/*
@@ -1977,7 +2000,7 @@ static void
 StoreCatalogInheritance(Oid relationId, List *supers)
 {
 	Relation	relation;
-	int16		seqNumber;
+	int32		seqNumber;
 	ListCell   *entry;
 
 	/*
@@ -2017,7 +2040,7 @@ StoreCatalogInheritance(Oid relationId, List *supers)
  */
 static void
 StoreCatalogInheritance1(Oid relationId, Oid parentOid,
-						 int16 seqNumber, Relation inhRelation)
+						 int32 seqNumber, Relation inhRelation)
 {
 	TupleDesc	desc = RelationGetDescr(inhRelation);
 	Datum		values[Natts_pg_inherits];
@@ -2031,7 +2054,7 @@ StoreCatalogInheritance1(Oid relationId, Oid parentOid,
 	 */
 	values[Anum_pg_inherits_inhrelid - 1] = ObjectIdGetDatum(relationId);
 	values[Anum_pg_inherits_inhparent - 1] = ObjectIdGetDatum(parentOid);
-	values[Anum_pg_inherits_inhseqno - 1] = Int16GetDatum(seqNumber);
+	values[Anum_pg_inherits_inhseqno - 1] = Int32GetDatum(seqNumber);
 
 	memset(nulls, 0, sizeof(nulls));
 
@@ -2491,7 +2514,14 @@ rename_constraint_internal(Oid myrelid,
 	ReleaseSysCache(tuple);
 
 	if (targetrelation)
+	{
+		/*
+		 * Invalidate relcache so as others can see the new constraint name.
+		 */
+		CacheInvalidateRelcache(targetrelation);
+
 		relation_close(targetrelation, NoLock); /* close rel but keep lock */
+	}
 
 	return address;
 }
@@ -3467,7 +3497,7 @@ ATExecCmd(List **wqueue, AlteredTableInfo *tab, Relation rel,
 										 * VIEW */
 			address = ATExecAddColumn(wqueue, tab, rel, (ColumnDef *) cmd->def,
 									  false, false, false,
-									  false, lockmode);
+									  cmd->missing_ok, lockmode);
 			break;
 		case AT_AddColumnRecurse:
 			address = ATExecAddColumn(wqueue, tab, rel, (ColumnDef *) cmd->def,
@@ -4473,13 +4503,18 @@ ATTypedTableRecursion(List **wqueue, Relation rel, AlterTableCmd *cmd,
 /*
  * find_composite_type_dependencies
  *
- * Check to see if a composite type is being used as a column in some
- * other table (possibly nested several levels deep in composite types!).
+ * Check to see if the type "typeOid" is being used as a column in some table
+ * (possibly nested several levels deep in composite types, arrays, etc!).
  * Eventually, we'd like to propagate the check or rewrite operation
- * into other such tables, but for now, just error out if we find any.
+ * into such tables, but for now, just error out if we find any.
  *
- * Caller should provide either a table name or a type name (not both) to
- * report in the error message, if any.
+ * Caller should provide either the associated relation of a rowtype,
+ * or a type name (not both) for use in the error message, if any.
+ *
+ * Note that "typeOid" is not necessarily a composite type; it could also be
+ * another container type such as an array or range, or a domain over one of
+ * these things.  The name of this function is therefore somewhat historical,
+ * but it's not worth changing.
  *
  * We assume that functions and views depending on the type are not reasons
  * to reject the ALTER.  (How safe is this really?)
@@ -4492,11 +4527,13 @@ find_composite_type_dependencies(Oid typeOid, Relation origRelation,
 	ScanKeyData key[2];
 	SysScanDesc depScan;
 	HeapTuple	depTup;
-	Oid			arrayOid;
+
+	/* since this function recurses, it could be driven to stack overflow */
+	check_stack_depth();
 
 	/*
-	 * We scan pg_depend to find those things that depend on the rowtype. (We
-	 * assume we can ignore refobjsubid for a rowtype.)
+	 * We scan pg_depend to find those things that depend on the given type.
+	 * (We assume we can ignore refobjsubid for a type.)
 	 */
 	depRel = heap_open(DependRelationId, AccessShareLock);
 
@@ -4518,8 +4555,22 @@ find_composite_type_dependencies(Oid typeOid, Relation origRelation,
 		Relation	rel;
 		Form_pg_attribute att;
 
-		/* Ignore dependees that aren't user columns of relations */
-		/* (we assume system columns are never of rowtypes) */
+		/* Check for directly dependent types */
+		if (pg_depend->classid == TypeRelationId)
+		{
+			/*
+			 * This must be an array, domain, or range containing the given
+			 * type, so recursively check for uses of this type.  Note that
+			 * any error message will mention the original type not the
+			 * container; this is intentional.
+			 */
+			find_composite_type_dependencies(pg_depend->objid,
+											 origRelation, origTypeName);
+			continue;
+		}
+
+		/* Else, ignore dependees that aren't user columns of relations */
+		/* (we assume system columns are never of interesting types) */
 		if (pg_depend->classid != RelationRelationId ||
 			pg_depend->objsubid <= 0)
 			continue;
@@ -4575,14 +4626,6 @@ find_composite_type_dependencies(Oid typeOid, Relation origRelation,
 	systable_endscan(depScan);
 
 	relation_close(depRel, AccessShareLock);
-
-	/*
-	 * If there's an array type for the rowtype, must check for uses of it,
-	 * too.
-	 */
-	arrayOid = get_array_type(typeOid);
-	if (OidIsValid(arrayOid))
-		find_composite_type_dependencies(arrayOid, origRelation, origTypeName);
 }
 
 
@@ -5994,7 +6037,7 @@ ATExecAddIndexConstraint(AlteredTableInfo *tab, Relation rel,
 
 	/* Extra checks needed if making primary key */
 	if (stmt->primary)
-		index_check_primary_key(rel, indexInfo, true);
+		index_check_primary_key(rel, indexInfo, true, stmt);
 
 	/* Note we currently don't support EXCLUSION constraints here */
 	if (stmt->primary)
@@ -8235,11 +8278,6 @@ ATExecAlterColumnType(AlteredTableInfo *tab, Relation rel,
 	 * performed all the individual ALTER TYPE operations.  We have to save
 	 * the info before executing ALTER TYPE, though, else the deparser will
 	 * get confused.
-	 *
-	 * There could be multiple entries for the same object, so we must check
-	 * to ensure we process each one only once.  Note: we assume that an index
-	 * that implements a constraint will not show a direct dependency on the
-	 * column.
 	 */
 	depRel = heap_open(DependRelationId, RowExclusiveLock);
 
@@ -8281,13 +8319,7 @@ ATExecAlterColumnType(AlteredTableInfo *tab, Relation rel,
 					if (relKind == RELKIND_INDEX)
 					{
 						Assert(foundObject.objectSubId == 0);
-						if (!list_member_oid(tab->changedIndexOids, foundObject.objectId))
-						{
-							tab->changedIndexOids = lappend_oid(tab->changedIndexOids,
-													   foundObject.objectId);
-							tab->changedIndexDefs = lappend(tab->changedIndexDefs,
-							   pg_get_indexdef_string(foundObject.objectId));
-						}
+						RememberIndexForRebuilding(foundObject.objectId, tab);
 					}
 					else if (relKind == RELKIND_SEQUENCE)
 					{
@@ -8308,39 +8340,8 @@ ATExecAlterColumnType(AlteredTableInfo *tab, Relation rel,
 
 			case OCLASS_CONSTRAINT:
 				Assert(foundObject.objectSubId == 0);
-				if (!list_member_oid(tab->changedConstraintOids,
-									 foundObject.objectId))
-				{
-					char	   *defstring = pg_get_constraintdef_command(foundObject.objectId);
-
-					/*
-					 * Put NORMAL dependencies at the front of the list and
-					 * AUTO dependencies at the back.  This makes sure that
-					 * foreign-key constraints depending on this column will
-					 * be dropped before unique or primary-key constraints of
-					 * the column; which we must have because the FK
-					 * constraints depend on the indexes belonging to the
-					 * unique constraints.
-					 */
-					if (foundDep->deptype == DEPENDENCY_NORMAL)
-					{
-						tab->changedConstraintOids =
-							lcons_oid(foundObject.objectId,
-									  tab->changedConstraintOids);
-						tab->changedConstraintDefs =
-							lcons(defstring,
-								  tab->changedConstraintDefs);
-					}
-					else
-					{
-						tab->changedConstraintOids =
-							lappend_oid(tab->changedConstraintOids,
-										foundObject.objectId);
-						tab->changedConstraintDefs =
-							lappend(tab->changedConstraintDefs,
-									defstring);
-					}
-				}
+				RememberConstraintForRebuilding(foundObject.objectId, tab,
+												foundDep->deptype);
 				break;
 
 			case OCLASS_REWRITE:
@@ -8548,6 +8549,95 @@ ATExecAlterColumnType(AlteredTableInfo *tab, Relation rel,
 }
 
 /*
+ * Subroutine for ATExecAlterColumnType: remember that a constraint needs
+ * to be rebuilt (which we might already know).
+ */
+static void
+RememberConstraintForRebuilding(Oid conoid, AlteredTableInfo *tab,
+								DependencyType deptype)
+{
+	/*
+	 * This de-duplication check is critical for two independent reasons: we
+	 * mustn't try to recreate the same constraint twice, and if a constraint
+	 * depends on more than one column whose type is to be altered, we must
+	 * capture its definition string before applying any of the column type
+	 * changes.  ruleutils.c will get confused if we ask again later.
+	 */
+	if (!list_member_oid(tab->changedConstraintOids, conoid))
+	{
+		/* OK, capture the constraint's existing definition string */
+		char	   *defstring = pg_get_constraintdef_command(conoid);
+
+		/*
+		 * Put NORMAL dependencies at the front of the list and AUTO
+		 * dependencies at the back.  This makes sure that foreign-key
+		 * constraints depending on this column will be dropped before unique
+		 * or primary-key constraints of the column; which we must have
+		 * because the FK constraints depend on the indexes belonging to the
+		 * unique constraints.
+		 */
+		if (deptype == DEPENDENCY_NORMAL)
+		{
+			tab->changedConstraintOids = lcons_oid(conoid,
+												   tab->changedConstraintOids);
+			tab->changedConstraintDefs = lcons(defstring,
+											   tab->changedConstraintDefs);
+		}
+		else
+		{
+			tab->changedConstraintOids = lappend_oid(tab->changedConstraintOids,
+													 conoid);
+			tab->changedConstraintDefs = lappend(tab->changedConstraintDefs,
+												 defstring);
+		}
+	}
+}
+
+/*
+ * Subroutine for ATExecAlterColumnType: remember that an index needs
+ * to be rebuilt (which we might already know).
+ */
+static void
+RememberIndexForRebuilding(Oid indoid, AlteredTableInfo *tab)
+{
+	/*
+	 * This de-duplication check is critical for two independent reasons: we
+	 * mustn't try to recreate the same index twice, and if an index depends
+	 * on more than one column whose type is to be altered, we must capture
+	 * its definition string before applying any of the column type changes.
+	 * ruleutils.c will get confused if we ask again later.
+	 */
+	if (!list_member_oid(tab->changedIndexOids, indoid))
+	{
+		/*
+		 * Before adding it as an index-to-rebuild, we'd better see if it
+		 * belongs to a constraint, and if so rebuild the constraint instead.
+		 * Typically this check fails, because constraint indexes normally
+		 * have only dependencies on their constraint.  But it's possible for
+		 * such an index to also have direct dependencies on table columns,
+		 * for example with a partial exclusion constraint.
+		 */
+		Oid			conoid = get_index_constraint(indoid);
+
+		if (OidIsValid(conoid))
+		{
+			/* index dependencies on columns should generally be AUTO */
+			RememberConstraintForRebuilding(conoid, tab, DEPENDENCY_AUTO);
+		}
+		else
+		{
+			/* OK, capture the index's existing definition string */
+			char	   *defstring = pg_get_indexdef_string(indoid);
+
+			tab->changedIndexOids = lappend_oid(tab->changedIndexOids,
+												indoid);
+			tab->changedIndexDefs = lappend(tab->changedIndexDefs,
+											defstring);
+		}
+	}
+}
+
+/*
  * Returns the address of the modified column
  */
 static ObjectAddress
@@ -8673,8 +8763,7 @@ ATPostAlterTypeCleanup(List **wqueue, AlteredTableInfo *tab, LOCKMODE lockmode)
 	 * appropriate work queue entries.  We do this before dropping because in
 	 * the case of a FOREIGN KEY constraint, we might not yet have exclusive
 	 * lock on the table the constraint is attached to, and we need to get
-	 * that before dropping.  It's safe because the parser won't actually look
-	 * at the catalogs to detect the existing entry.
+	 * that before reparsing/dropping.
 	 *
 	 * We can't rely on the output of deparsing to tell us which relation to
 	 * operate on, because concurrent activity might have made the name
@@ -8690,6 +8779,7 @@ ATPostAlterTypeCleanup(List **wqueue, AlteredTableInfo *tab, LOCKMODE lockmode)
 		Form_pg_constraint con;
 		Oid			relid;
 		Oid			confrelid;
+		char		contype;
 		bool		conislocal;
 
 		tup = SearchSysCache1(CONSTROID, ObjectIdGetDatum(oldId));
@@ -8698,6 +8788,7 @@ ATPostAlterTypeCleanup(List **wqueue, AlteredTableInfo *tab, LOCKMODE lockmode)
 		con = (Form_pg_constraint) GETSTRUCT(tup);
 		relid = con->conrelid;
 		confrelid = con->confrelid;
+		contype = con->contype;
 		conislocal = con->conislocal;
 		ReleaseSysCache(tup);
 
@@ -8709,6 +8800,15 @@ ATPostAlterTypeCleanup(List **wqueue, AlteredTableInfo *tab, LOCKMODE lockmode)
 		 */
 		if (!conislocal)
 			continue;
+
+		/*
+		 * When rebuilding an FK constraint that references the table we're
+		 * modifying, we might not yet have any lock on the FK's table, so get
+		 * one now.  We'll need AccessExclusiveLock for the DROP CONSTRAINT
+		 * step, so there's no value in asking for anything weaker.
+		 */
+		if (relid != tab->relid && contype == CONSTRAINT_FOREIGN)
+			LockRelationOid(relid, AccessExclusiveLock);
 
 		ATPostAlterTypeParse(oldId, relid, confrelid,
 							 (char *) lfirst(def_item),
@@ -9209,17 +9309,13 @@ ATExecChangeOwner(Oid relationOid, Oid newOwnerId, bool recursing, LOCKMODE lock
 			list_free(index_oid_list);
 		}
 
-		if (tuple_class->relkind == RELKIND_RELATION ||
-			tuple_class->relkind == RELKIND_MATVIEW)
-		{
-			/* If it has a toast table, recurse to change its ownership */
-			if (tuple_class->reltoastrelid != InvalidOid)
-				ATExecChangeOwner(tuple_class->reltoastrelid, newOwnerId,
-								  true, lockmode);
+		/* If it has a toast table, recurse to change its ownership */
+		if (tuple_class->reltoastrelid != InvalidOid)
+			ATExecChangeOwner(tuple_class->reltoastrelid, newOwnerId,
+							  true, lockmode);
 
-			/* If it has dependent sequences, recurse to change them too */
-			change_owner_recurse_to_sequences(relationOid, newOwnerId, lockmode);
-		}
+		/* If it has dependent sequences, recurse to change them too */
+		change_owner_recurse_to_sequences(relationOid, newOwnerId, lockmode);
 	}
 
 	InvokeObjectPostAlterHook(RelationRelationId, relationOid, 0);
@@ -9540,7 +9636,7 @@ ATExecSetRelOptions(Relation rel, List *defList, AlterTableType operation,
 				ereport(ERROR,
 						(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 						 errmsg("WITH CHECK OPTION is supported only on automatically updatable views"),
-						 errhint("%s", view_updatable_error)));
+						 errhint("%s", _(view_updatable_error))));
 		}
 	}
 
@@ -9988,21 +10084,14 @@ static void
 copy_relation_data(SMgrRelation src, SMgrRelation dst,
 				   ForkNumber forkNum, char relpersistence)
 {
-	char	   *buf;
+	PGAlignedBlock buf;
 	Page		page;
 	bool		use_wal;
 	bool		copying_initfork;
 	BlockNumber nblocks;
 	BlockNumber blkno;
 
-	/*
-	 * palloc the buffer so that it's MAXALIGN'd.  If it were just a local
-	 * char[] array, the compiler might align it on any byte boundary, which
-	 * can seriously hurt transfer speed to and from the kernel; not to
-	 * mention possibly making log_newpage's accesses to the page header fail.
-	 */
-	buf = (char *) palloc(BLCKSZ);
-	page = (Page) buf;
+	page = (Page) buf.data;
 
 	/*
 	 * The init fork for an unlogged relation in many respects has to be
@@ -10026,7 +10115,7 @@ copy_relation_data(SMgrRelation src, SMgrRelation dst,
 		/* If we got a cancel signal during the copy of the data, quit */
 		CHECK_FOR_INTERRUPTS();
 
-		smgrread(src, forkNum, blkno, buf);
+		smgrread(src, forkNum, blkno, buf.data);
 
 		if (!PageIsVerified(page, blkno))
 			ereport(ERROR,
@@ -10052,10 +10141,8 @@ copy_relation_data(SMgrRelation src, SMgrRelation dst,
 		 * rel, because there's no need for smgr to schedule an fsync for this
 		 * write; we'll do it ourselves below.
 		 */
-		smgrextend(dst, forkNum, blkno, buf, true);
+		smgrextend(dst, forkNum, blkno, buf.data, true);
 	}
-
-	pfree(buf);
 
 	/*
 	 * If the rel is WAL-logged, must fsync before commit.  We use heap_sync

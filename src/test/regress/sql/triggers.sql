@@ -131,6 +131,22 @@ DROP TABLE fkeys2;
 --
 -- DROP TABLE dup17;
 
+-- Check behavior when trigger returns unmodified trigtuple
+create table trigtest (f1 int, f2 text);
+
+create trigger trigger_return_old
+	before insert or delete or update on trigtest
+	for each row execute procedure trigger_return_old();
+
+insert into trigtest values(1, 'foo');
+select * from trigtest;
+update trigtest set f2 = f2 || 'bar';
+select * from trigtest;
+delete from trigtest;
+select * from trigtest;
+
+drop table trigtest;
+
 create sequence ttdummy_seq increment 10 start 0 minvalue 0;
 
 create table tttest (
@@ -1182,6 +1198,33 @@ select * from self_ref_trigger;
 drop table self_ref_trigger;
 drop function self_ref_trigger_ins_func();
 drop function self_ref_trigger_del_func();
+
+--
+-- Check that statement triggers work correctly even with all children excluded
+--
+
+create table stmt_trig_on_empty_upd (a int);
+create table stmt_trig_on_empty_upd1 () inherits (stmt_trig_on_empty_upd);
+create function update_stmt_notice() returns trigger as $$
+begin
+	raise notice 'updating %', TG_TABLE_NAME;
+	return null;
+end;
+$$ language plpgsql;
+create trigger before_stmt_trigger
+	before update on stmt_trig_on_empty_upd
+	execute procedure update_stmt_notice();
+create trigger before_stmt_trigger
+	before update on stmt_trig_on_empty_upd1
+	execute procedure update_stmt_notice();
+
+-- inherited no-op update
+update stmt_trig_on_empty_upd set a = a where false returning a+1 as aa;
+-- simple no-op update
+update stmt_trig_on_empty_upd1 set a = a where false returning a+1 as aa;
+
+drop table stmt_trig_on_empty_upd cascade;
+drop function update_stmt_notice();
 
 --
 -- Verify behavior of before and after triggers with INSERT...ON CONFLICT

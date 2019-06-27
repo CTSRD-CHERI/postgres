@@ -201,6 +201,7 @@ WalReceiverMain(void)
 	bool		first_stream;
 	WalRcvData *walrcv = WalRcv;
 	TimestampTz last_recv_timestamp;
+	TimestampTz now;
 	bool		ping_sent;
 
 	/*
@@ -208,6 +209,8 @@ WalReceiverMain(void)
 	 * by fork() or EXEC_BACKEND mechanism from the postmaster).
 	 */
 	Assert(walrcv != NULL);
+
+	now = GetCurrentTimestamp();
 
 	/*
 	 * Mark walreceiver as running in shared memory.
@@ -239,6 +242,7 @@ WalReceiverMain(void)
 		case WALRCV_RESTARTING:
 		default:
 			/* Shouldn't happen */
+			SpinLockRelease(&walrcv->mutex);
 			elog(PANIC, "walreceiver still running according to shared memory state");
 	}
 	/* Advertise our PID so that the startup process can kill us */
@@ -253,7 +257,8 @@ WalReceiverMain(void)
 	startpointTLI = walrcv->receiveStartTLI;
 
 	/* Initialise to a sanish value */
-	walrcv->lastMsgSendTime = walrcv->lastMsgReceiptTime = walrcv->latestWalEndTime = GetCurrentTimestamp();
+	walrcv->lastMsgSendTime =
+		walrcv->lastMsgReceiptTime = walrcv->latestWalEndTime = now;
 
 	SpinLockRelease(&walrcv->mutex);
 
@@ -317,12 +322,12 @@ WalReceiverMain(void)
 	SpinLockAcquire(&walrcv->mutex);
 	memset(walrcv->conninfo, 0, MAXCONNINFO);
 	if (tmp_conninfo)
-	{
 		strlcpy((char *) walrcv->conninfo, tmp_conninfo, MAXCONNINFO);
-		pfree(tmp_conninfo);
-	}
 	walrcv->ready_to_display = true;
 	SpinLockRelease(&walrcv->mutex);
+
+	if (tmp_conninfo)
+		pfree(tmp_conninfo);
 
 	first_stream = true;
 	for (;;)
@@ -827,27 +832,21 @@ WalRcvShutdownHandler(SIGNAL_ARGS)
 static void
 WalRcvQuickDieHandler(SIGNAL_ARGS)
 {
-	PG_SETMASK(&BlockSig);
-
 	/*
-	 * We DO NOT want to run proc_exit() callbacks -- we're here because
-	 * shared memory may be corrupted, so we don't want to try to clean up our
-	 * transaction.  Just nail the windows shut and get out of town.  Now that
-	 * there's an atexit callback to prevent third-party code from breaking
-	 * things by calling exit() directly, we have to reset the callbacks
-	 * explicitly to make this work as intended.
+	 * We DO NOT want to run proc_exit() or atexit() callbacks -- we're here
+	 * because shared memory may be corrupted, so we don't want to try to
+	 * clean up our transaction.  Just nail the windows shut and get out of
+	 * town.  The callbacks wouldn't be safe to run from a signal handler,
+	 * anyway.
+	 *
+	 * Note we use _exit(2) not _exit(0).  This is to force the postmaster
+	 * into a system reset cycle if someone sends a manual SIGQUIT to a
+	 * random backend.  This is necessary precisely because we don't clean up
+	 * our shared memory state.  (The "dead man switch" mechanism in
+	 * pmsignal.c should ensure the postmaster sees this as a crash, too, but
+	 * no harm in being doubly sure.)
 	 */
-	on_exit_reset();
-
-	/*
-	 * Note we do exit(2) not exit(0).  This is to force the postmaster into a
-	 * system reset cycle if some idiot DBA sends a manual SIGQUIT to a random
-	 * backend.  This is necessary precisely because we don't clean up our
-	 * shared memory state.  (The "dead man switch" mechanism in pmsignal.c
-	 * should ensure the postmaster sees this as a crash, too, but no harm in
-	 * being doubly sure.)
-	 */
-	exit(2);
+	_exit(2);
 }
 
 /*
@@ -1349,8 +1348,8 @@ pg_stat_get_wal_receiver(PG_FUNCTION_ARGS)
 	TimestampTz last_receipt_time;
 	XLogRecPtr	latest_end_lsn;
 	TimestampTz latest_end_time;
-	char	   *slotname;
-	char	   *conninfo;
+	char		slotname[NAMEDATALEN];
+	char		conninfo[MAXCONNINFO];
 
 	/*
 	 * No WAL receiver (or not ready yet), just return a tuple with NULL
@@ -1377,8 +1376,8 @@ pg_stat_get_wal_receiver(PG_FUNCTION_ARGS)
 	last_receipt_time = walrcv->lastMsgReceiptTime;
 	latest_end_lsn = walrcv->latestWalEnd;
 	latest_end_time = walrcv->latestWalEndTime;
-	slotname = pstrdup(walrcv->slotname);
-	conninfo = pstrdup(walrcv->conninfo);
+	strlcpy(slotname, (char *) walrcv->slotname, sizeof(slotname));
+	strlcpy(conninfo, (char *) walrcv->conninfo, sizeof(conninfo));
 	SpinLockRelease(&walrcv->mutex);
 
 	/* Fetch values */

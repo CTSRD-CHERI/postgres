@@ -2138,6 +2138,9 @@ AlterDomainDefault(List *names, Node *defaultRaw)
 	Relation	rel;
 	char	   *defaultValue;
 	Node	   *defaultExpr = NULL;		/* NULL if no default specified */
+	Acl		   *typacl;
+	Datum		aclDatum;
+	bool		isNull;
 	Datum		new_record[Natts_pg_type];
 	bool		new_record_nulls[Natts_pg_type];
 	bool		new_record_repl[Natts_pg_type];
@@ -2231,25 +2234,23 @@ AlterDomainDefault(List *names, Node *defaultRaw)
 
 	CatalogUpdateIndexes(rel, newtuple);
 
+	/* Must extract ACL for use of GenerateTypeDependencies */
+	aclDatum = heap_getattr(newtuple, Anum_pg_type_typacl,
+							RelationGetDescr(rel), &isNull);
+	if (isNull)
+		typacl = NULL;
+	else
+		typacl = DatumGetAclPCopy(aclDatum);
+
 	/* Rebuild dependencies */
-	GenerateTypeDependencies(typTup->typnamespace,
-							 domainoid,
-							 InvalidOid,		/* typrelid is n/a */
-							 0, /* relation kind is n/a */
-							 typTup->typowner,
-							 typTup->typinput,
-							 typTup->typoutput,
-							 typTup->typreceive,
-							 typTup->typsend,
-							 typTup->typmodin,
-							 typTup->typmodout,
-							 typTup->typanalyze,
-							 InvalidOid,
-							 false,		/* a domain isn't an implicit array */
-							 typTup->typbasetype,
-							 typTup->typcollation,
+	GenerateTypeDependencies(domainoid,
+							 (Form_pg_type) GETSTRUCT(newtuple),
 							 defaultExpr,
-							 true);		/* Rebuild is true */
+							 typacl,
+							 0, /* relation kind is n/a */
+							 false,		/* a domain isn't an implicit array */
+							 false, /* nor is it any kind of dependent type */
+							 true); /* We do need to rebuild dependencies */
 
 	InvokeObjectPostAlterHook(TypeRelationId, domainoid, 0);
 
@@ -2798,10 +2799,9 @@ validateDomainConstraint(Oid domainoid, char *ccbin)
  * risk by using the weakest suitable lock (ShareLock for most callers).
  *
  * XXX the API for this is not sufficient to support checking domain values
- * that are inside composite types or arrays.  Currently we just error out
- * if a composite type containing the target domain is stored anywhere.
- * There are not currently arrays of domains; if there were, we could take
- * the same approach, but it'd be nicer to fix it properly.
+ * that are inside container types, such as composite types, arrays, or
+ * ranges.  Currently we just error out if a container type containing the
+ * target domain is stored anywhere.
  *
  * Generally used for retrieving a list of tests when adding
  * new constraints to a domain.
@@ -2810,12 +2810,16 @@ static List *
 get_rels_with_domain(Oid domainOid, LOCKMODE lockmode)
 {
 	List	   *result = NIL;
+	char	   *domainTypeName = format_type_be(domainOid);
 	Relation	depRel;
 	ScanKeyData key[2];
 	SysScanDesc depScan;
 	HeapTuple	depTup;
 
 	Assert(lockmode != NoLock);
+
+	/* since this function recurses, it could be driven to stack overflow */
+	check_stack_depth();
 
 	/*
 	 * We scan pg_depend to find those things that depend on the domain. (We
@@ -2843,20 +2847,32 @@ get_rels_with_domain(Oid domainOid, LOCKMODE lockmode)
 		Form_pg_attribute pg_att;
 		int			ptr;
 
-		/* Check for directly dependent types --- must be domains */
+		/* Check for directly dependent types */
 		if (pg_depend->classid == TypeRelationId)
 		{
-			Assert(get_typtype(pg_depend->objid) == TYPTYPE_DOMAIN);
-
-			/*
-			 * Recursively add dependent columns to the output list.  This is
-			 * a bit inefficient since we may fail to combine RelToCheck
-			 * entries when attributes of the same rel have different derived
-			 * domain types, but it's probably not worth improving.
-			 */
-			result = list_concat(result,
-								 get_rels_with_domain(pg_depend->objid,
-													  lockmode));
+			if (get_typtype(pg_depend->objid) == TYPTYPE_DOMAIN)
+			{
+				/*
+				 * This is a sub-domain, so recursively add dependent columns
+				 * to the output list.  This is a bit inefficient since we may
+				 * fail to combine RelToCheck entries when attributes of the
+				 * same rel have different derived domain types, but it's
+				 * probably not worth improving.
+				 */
+				result = list_concat(result,
+									 get_rels_with_domain(pg_depend->objid,
+														  lockmode));
+			}
+			else
+			{
+				/*
+				 * Otherwise, it is some container type using the domain, so
+				 * fail if there are any columns of this type.
+				 */
+				find_composite_type_dependencies(pg_depend->objid,
+												 NULL,
+												 domainTypeName);
+			}
 			continue;
 		}
 
@@ -2893,7 +2909,7 @@ get_rels_with_domain(Oid domainOid, LOCKMODE lockmode)
 			if (OidIsValid(rel->rd_rel->reltype))
 				find_composite_type_dependencies(rel->rd_rel->reltype,
 												 NULL,
-												 format_type_be(domainOid));
+												 domainTypeName);
 
 			/*
 			 * Otherwise, we can ignore relations except those with both

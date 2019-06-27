@@ -77,6 +77,11 @@ CheckLogicalDecodingRequirements(void)
 {
 	CheckSlotRequirements();
 
+	/*
+	 * NB: Adding a new requirement likely means that RestoreSlotFromDisk()
+	 * needs the same check.
+	 */
+
 	if (wal_level < WAL_LEVEL_LOGICAL)
 		ereport(ERROR,
 				(errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE),
@@ -284,7 +289,7 @@ CreateInitDecodingContext(char *plugin,
 	 */
 	LWLockAcquire(ProcArrayLock, LW_EXCLUSIVE);
 
-	xmin_horizon = GetOldestSafeDecodingTransactionId(need_full_snapshot);
+	xmin_horizon = GetOldestSafeDecodingTransactionId(!need_full_snapshot);
 
 	slot->effective_catalog_xmin = xmin_horizon;
 	slot->data.catalog_xmin = xmin_horizon;

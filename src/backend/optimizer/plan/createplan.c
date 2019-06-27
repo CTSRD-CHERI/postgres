@@ -19,7 +19,6 @@
 #include <limits.h>
 #include <math.h>
 
-#include "access/stratnum.h"
 #include "access/sysattr.h"
 #include "catalog/pg_class.h"
 #include "foreign/fdwapi.h"
@@ -29,11 +28,11 @@
 #include "nodes/nodeFuncs.h"
 #include "optimizer/clauses.h"
 #include "optimizer/cost.h"
+#include "optimizer/paramassign.h"
 #include "optimizer/paths.h"
 #include "optimizer/placeholder.h"
 #include "optimizer/plancat.h"
 #include "optimizer/planmain.h"
-#include "optimizer/planner.h"
 #include "optimizer/predtest.h"
 #include "optimizer/restrictinfo.h"
 #include "optimizer/subselect.h"
@@ -79,7 +78,8 @@ static Plan *create_gating_plan(PlannerInfo *root, Path *path, Plan *plan,
 				   List *gating_quals);
 static Plan *create_join_plan(PlannerInfo *root, JoinPath *best_path);
 static Plan *create_append_plan(PlannerInfo *root, AppendPath *best_path);
-static Plan *create_merge_append_plan(PlannerInfo *root, MergeAppendPath *best_path);
+static Plan *create_merge_append_plan(PlannerInfo *root, MergeAppendPath *best_path,
+						 int flags);
 static Result *create_result_plan(PlannerInfo *root, ResultPath *best_path);
 static Material *create_material_plan(PlannerInfo *root, MaterialPath *best_path,
 					 int flags);
@@ -147,8 +147,6 @@ static MergeJoin *create_mergejoin_plan(PlannerInfo *root, MergePath *best_path)
 static HashJoin *create_hashjoin_plan(PlannerInfo *root, HashPath *best_path);
 static Node *replace_nestloop_params(PlannerInfo *root, Node *expr);
 static DECLARE_NODE_MUTATOR(replace_nestloop_params_mutator, PlannerInfo *)
-static void process_subquery_nestloop_params(PlannerInfo *root,
-								 List *subplan_params);
 static List *fix_indexqual_references(PlannerInfo *root, IndexPath *index_path);
 static List *fix_indexorderby_references(PlannerInfo *root, IndexPath *index_path);
 static Node *fix_indexqual_operand(Node *node, IndexOptInfo *index, int indexcol);
@@ -295,7 +293,7 @@ create_plan(PlannerInfo *root, Path *best_path)
 	/* plan_params should not be in use in current query level */
 	Assert(root->plan_params == NIL);
 
-	/* Initialize this module's private workspace in PlannerInfo */
+	/* Initialize this module's workspace in PlannerInfo */
 	root->curOuterRels = NULL;
 	root->curOuterParams = NIL;
 
@@ -343,6 +341,9 @@ create_plan_recurse(PlannerInfo *root, Path *best_path, int flags)
 {
 	Plan	   *plan;
 
+	/* Guard against stack overflow due to overly complex plans */
+	check_stack_depth();
+
 	switch (best_path->pathtype)
 	{
 		case T_SeqScan:
@@ -372,7 +373,8 @@ create_plan_recurse(PlannerInfo *root, Path *best_path, int flags)
 			break;
 		case T_MergeAppend:
 			plan = create_merge_append_plan(root,
-											(MergeAppendPath *) best_path);
+											(MergeAppendPath *) best_path,
+											flags);
 			break;
 		case T_Result:
 			if (IsA(best_path, ProjectionPath))
@@ -543,10 +545,10 @@ create_scan_plan(PlannerInfo *root, Path *best_path, int flags)
 			tlist = copyObject(((IndexPath *) best_path)->indexinfo->indextlist);
 
 			/*
-			 * Transfer any sortgroupref data to the replacement tlist, unless
-			 * we don't care because the gating Result will handle it.
+			 * Transfer sortgroupref data to the replacement tlist, if
+			 * requested (use_physical_tlist checked that this will work).
 			 */
-			if (!gating_clauses)
+			if (flags & CP_LABEL_TLIST)
 				apply_pathtarget_labeling_to_tlist(tlist, best_path->pathtarget);
 		}
 		else
@@ -560,7 +562,7 @@ create_scan_plan(PlannerInfo *root, Path *best_path, int flags)
 			else
 			{
 				/* As above, transfer sortgroupref data to replacement tlist */
-				if (!gating_clauses)
+				if (flags & CP_LABEL_TLIST)
 					apply_pathtarget_labeling_to_tlist(tlist, best_path->pathtarget);
 			}
 		}
@@ -1025,11 +1027,14 @@ create_append_plan(PlannerInfo *root, AppendPath *best_path)
  *	  Returns a Plan node.
  */
 static Plan *
-create_merge_append_plan(PlannerInfo *root, MergeAppendPath *best_path)
+create_merge_append_plan(PlannerInfo *root, MergeAppendPath *best_path,
+						 int flags)
 {
 	MergeAppend *node = makeNode(MergeAppend);
 	Plan	   *plan = &node->plan;
 	List	   *tlist = build_path_tlist(root, &best_path->path);
+	int			orig_tlist_length = list_length(tlist);
+	bool		tlist_was_changed;
 	List	   *pathkeys = best_path->path.pathkeys;
 	List	   *subplans = NIL;
 	ListCell   *subpaths;
@@ -1046,7 +1051,12 @@ create_merge_append_plan(PlannerInfo *root, MergeAppendPath *best_path)
 	plan->lefttree = NULL;
 	plan->righttree = NULL;
 
-	/* Compute sort column info, and adjust MergeAppend's tlist as needed */
+	/*
+	 * Compute sort column info, and adjust MergeAppend's tlist as needed.
+	 * Because we pass adjust_tlist_in_place = true, we may ignore the
+	 * function result; it must be the same plan node.  However, we then need
+	 * to detect whether any tlist entries were added.
+	 */
 	(void) prepare_sort_from_pathkeys(plan, pathkeys,
 									  best_path->path.parent->relids,
 									  NULL,
@@ -1056,6 +1066,7 @@ create_merge_append_plan(PlannerInfo *root, MergeAppendPath *best_path)
 									  &node->sortOperators,
 									  &node->collations,
 									  &node->nullsFirst);
+	tlist_was_changed = (orig_tlist_length != list_length(plan->targetlist));
 
 	/*
 	 * Now prepare the child plans.  We must apply prepare_sort_from_pathkeys
@@ -1120,7 +1131,18 @@ create_merge_append_plan(PlannerInfo *root, MergeAppendPath *best_path)
 
 	node->mergeplans = subplans;
 
-	return (Plan *) node;
+	/*
+	 * If prepare_sort_from_pathkeys added sort columns, but we were told to
+	 * produce either the exact tlist or a narrow tlist, we should get rid of
+	 * the sort columns again.  We must inject a projection node to do so.
+	 */
+	if (tlist_was_changed && (flags & (CP_EXACT_TLIST | CP_SMALL_TLIST)))
+	{
+		tlist = list_truncate(list_copy(plan->targetlist), orig_tlist_length);
+		return inject_projection_plan(plan, tlist);
+	}
+	else
+		return plan;
 }
 
 /*
@@ -1249,19 +1271,10 @@ create_unique_plan(PlannerInfo *root, UniquePath *best_path, int flags)
 		}
 	}
 
+	/* Use change_plan_targetlist in case we need to insert a Result node */
 	if (newitems || best_path->umethod == UNIQUE_PATH_SORT)
-	{
-		/*
-		 * If the top plan node can't do projections and its existing target
-		 * list isn't already what we need, we need to add a Result node to
-		 * help it along.
-		 */
-		if (!is_projection_capable_plan(subplan) &&
-			!tlist_same_exprs(newtlist, subplan->targetlist))
-			subplan = inject_projection_plan(subplan, newtlist);
-		else
-			subplan->targetlist = newtlist;
-	}
+		subplan = change_plan_targetlist(subplan, newtlist,
+										 best_path->path.parallel_safe);
 
 	/*
 	 * Build control information showing which subplan output columns are to
@@ -1500,6 +1513,37 @@ inject_projection_plan(Plan *subplan, List *tlist)
 	copy_plan_costsize(plan, subplan);
 
 	return plan;
+}
+
+/*
+ * change_plan_targetlist
+ *	  Externally available wrapper for inject_projection_plan.
+ *
+ * This is meant for use by FDW plan-generation functions, which might
+ * want to adjust the tlist computed by some subplan tree.  In general,
+ * a Result node is needed to compute the new tlist, but we can optimize
+ * some cases.
+ *
+ * In most cases, tlist_parallel_safe can just be passed as the parallel_safe
+ * flag of the FDW's own Path node.  (It's not actually used in this branch.)
+ */
+Plan *
+change_plan_targetlist(Plan *subplan, List *tlist, bool tlist_parallel_safe)
+{
+	/*
+	 * If the top plan node can't do projections and its existing target list
+	 * isn't already what we need, we need to add a Result node to help it
+	 * along.
+	 */
+	if (!is_projection_capable_plan(subplan) &&
+		!tlist_same_exprs(tlist, subplan->targetlist))
+		subplan = inject_projection_plan(subplan, tlist);
+	else
+	{
+		/* Else we can just replace the plan node's tlist */
+		subplan->targetlist = tlist;
+	}
+	return subplan;
 }
 
 /*
@@ -3419,9 +3463,6 @@ create_nestloop_plan(PlannerInfo *root,
 	Relids		outerrelids;
 	List	   *nestParams;
 	Relids		saveOuterRels = root->curOuterRels;
-	ListCell   *cell;
-	ListCell   *prev;
-	ListCell   *next;
 
 	/* NestLoop can project, so no need to be picky about child tlists */
 	outer_plan = create_plan_recurse(root, best_path->outerjoinpath, 0);
@@ -3444,6 +3485,7 @@ create_nestloop_plan(PlannerInfo *root,
 	if (IS_OUTER_JOIN(best_path->jointype))
 	{
 		extract_actual_join_clauses(joinrestrictclauses,
+									best_path->path.parent->relids,
 									&joinclauses, &otherclauses);
 	}
 	else
@@ -3464,38 +3506,10 @@ create_nestloop_plan(PlannerInfo *root,
 
 	/*
 	 * Identify any nestloop parameters that should be supplied by this join
-	 * node, and move them from root->curOuterParams to the nestParams list.
+	 * node, and remove them from root->curOuterParams.
 	 */
 	outerrelids = best_path->outerjoinpath->parent->relids;
-	nestParams = NIL;
-	prev = NULL;
-	for (cell = list_head(root->curOuterParams); cell; cell = next)
-	{
-		NestLoopParam *nlp = (NestLoopParam *) lfirst(cell);
-
-		next = lnext(cell);
-		if (IsA(nlp->paramval, Var) &&
-			bms_is_member(nlp->paramval->varno, outerrelids))
-		{
-			root->curOuterParams = list_delete_cell(root->curOuterParams,
-													cell, prev);
-			nestParams = lappend(nestParams, nlp);
-		}
-		else if (IsA(nlp->paramval, PlaceHolderVar) &&
-				 bms_overlap(((PlaceHolderVar *) nlp->paramval)->phrels,
-							 outerrelids) &&
-				 bms_is_subset(find_placeholder_info(root,
-											(PlaceHolderVar *) nlp->paramval,
-													 false)->ph_eval_at,
-							   outerrelids))
-		{
-			root->curOuterParams = list_delete_cell(root->curOuterParams,
-													cell, prev);
-			nestParams = lappend(nestParams, nlp);
-		}
-		else
-			prev = cell;
-	}
+	nestParams = identify_current_nestloop_params(root, outerrelids);
 
 	join_plan = make_nestloop(tlist,
 							  joinclauses,
@@ -3528,6 +3542,8 @@ create_mergejoin_plan(PlannerInfo *root,
 	Oid		   *mergecollations;
 	int		   *mergestrategies;
 	bool	   *mergenullsfirst;
+	PathKey    *opathkey;
+	EquivalenceClass *opeclass;
 	int			i;
 	ListCell   *lc;
 	ListCell   *lop;
@@ -3554,6 +3570,7 @@ create_mergejoin_plan(PlannerInfo *root,
 	if (IS_OUTER_JOIN(best_path->jpath.jointype))
 	{
 		extract_actual_join_clauses(joinclauses,
+									best_path->jpath.path.parent->relids,
 									&joinclauses, &otherclauses);
 	}
 	else
@@ -3640,7 +3657,8 @@ create_mergejoin_plan(PlannerInfo *root,
 	 * Compute the opfamily/collation/strategy/nullsfirst arrays needed by the
 	 * executor.  The information is in the pathkeys for the two inputs, but
 	 * we need to be careful about the possibility of mergeclauses sharing a
-	 * pathkey (compare find_mergeclauses_for_pathkeys()).
+	 * pathkey, as well as the possibility that the inner pathkeys are not in
+	 * an order matching the mergeclauses.
 	 */
 	nClauses = list_length(mergeclauses);
 	Assert(nClauses == list_length(best_path->path_mergeclauses));
@@ -3649,6 +3667,8 @@ create_mergejoin_plan(PlannerInfo *root,
 	mergestrategies = (int *) palloc(nClauses * sizeof(int));
 	mergenullsfirst = (bool *) palloc(nClauses * sizeof(bool));
 
+	opathkey = NULL;
+	opeclass = NULL;
 	lop = list_head(outerpathkeys);
 	lip = list_head(innerpathkeys);
 	i = 0;
@@ -3657,11 +3677,9 @@ create_mergejoin_plan(PlannerInfo *root,
 		RestrictInfo *rinfo = (RestrictInfo *) lfirst(lc);
 		EquivalenceClass *oeclass;
 		EquivalenceClass *ieclass;
-		PathKey    *opathkey;
-		PathKey    *ipathkey;
-		EquivalenceClass *opeclass;
-		EquivalenceClass *ipeclass;
-		ListCell   *l2;
+		PathKey    *ipathkey = NULL;
+		EquivalenceClass *ipeclass = NULL;
+		bool		first_inner_match = false;
 
 		/* fetch outer/inner eclass from mergeclause */
 		Assert(IsA(rinfo, RestrictInfo));
@@ -3679,104 +3697,96 @@ create_mergejoin_plan(PlannerInfo *root,
 		Assert(ieclass != NULL);
 
 		/*
-		 * For debugging purposes, we check that the eclasses match the paths'
-		 * pathkeys.  In typical cases the merge clauses are one-to-one with
-		 * the pathkeys, but when dealing with partially redundant query
-		 * conditions, we might have clauses that re-reference earlier path
-		 * keys.  The case that we need to reject is where a pathkey is
-		 * entirely skipped over.
+		 * We must identify the pathkey elements associated with this clause
+		 * by matching the eclasses (which should give a unique match, since
+		 * the pathkey lists should be canonical).  In typical cases the merge
+		 * clauses are one-to-one with the pathkeys, but when dealing with
+		 * partially redundant query conditions, things are more complicated.
 		 *
-		 * lop and lip reference the first as-yet-unused pathkey elements;
-		 * it's okay to match them, or any element before them.  If they're
-		 * NULL then we have found all pathkey elements to be used.
+		 * lop and lip reference the first as-yet-unmatched pathkey elements.
+		 * If they're NULL then all pathkey elements have been matched.
+		 *
+		 * The ordering of the outer pathkeys should match the mergeclauses,
+		 * by construction (see find_mergeclauses_for_outer_pathkeys()). There
+		 * could be more than one mergeclause for the same outer pathkey, but
+		 * no pathkey may be entirely skipped over.
 		 */
-		if (lop)
+		if (oeclass != opeclass)	/* multiple matches are not interesting */
 		{
+			/* doesn't match the current opathkey, so must match the next */
+			if (lop == NULL)
+				elog(ERROR, "outer pathkeys do not match mergeclauses");
 			opathkey = (PathKey *) lfirst(lop);
 			opeclass = opathkey->pk_eclass;
-			if (oeclass == opeclass)
-			{
-				/* fast path for typical case */
-				lop = lnext(lop);
-			}
-			else
-			{
-				/* redundant clauses ... must match something before lop */
-				foreach(l2, outerpathkeys)
-				{
-					if (l2 == lop)
-						break;
-					opathkey = (PathKey *) lfirst(l2);
-					opeclass = opathkey->pk_eclass;
-					if (oeclass == opeclass)
-						break;
-				}
-				if (oeclass != opeclass)
-					elog(ERROR, "outer pathkeys do not match mergeclauses");
-			}
-		}
-		else
-		{
-			/* redundant clauses ... must match some already-used pathkey */
-			opathkey = NULL;
-			opeclass = NULL;
-			foreach(l2, outerpathkeys)
-			{
-				opathkey = (PathKey *) lfirst(l2);
-				opeclass = opathkey->pk_eclass;
-				if (oeclass == opeclass)
-					break;
-			}
-			if (l2 == NULL)
+			lop = lnext(lop);
+			if (oeclass != opeclass)
 				elog(ERROR, "outer pathkeys do not match mergeclauses");
 		}
 
+		/*
+		 * The inner pathkeys likewise should not have skipped-over keys, but
+		 * it's possible for a mergeclause to reference some earlier inner
+		 * pathkey if we had redundant pathkeys.  For example we might have
+		 * mergeclauses like "o.a = i.x AND o.b = i.y AND o.c = i.x".  The
+		 * implied inner ordering is then "ORDER BY x, y, x", but the pathkey
+		 * mechanism drops the second sort by x as redundant, and this code
+		 * must cope.
+		 *
+		 * It's also possible for the implied inner-rel ordering to be like
+		 * "ORDER BY x, y, x DESC".  We still drop the second instance of x as
+		 * redundant; but this means that the sort ordering of a redundant
+		 * inner pathkey should not be considered significant.  So we must
+		 * detect whether this is the first clause matching an inner pathkey.
+		 */
 		if (lip)
 		{
 			ipathkey = (PathKey *) lfirst(lip);
 			ipeclass = ipathkey->pk_eclass;
 			if (ieclass == ipeclass)
 			{
-				/* fast path for typical case */
+				/* successful first match to this inner pathkey */
 				lip = lnext(lip);
-			}
-			else
-			{
-				/* redundant clauses ... must match something before lip */
-				foreach(l2, innerpathkeys)
-				{
-					if (l2 == lip)
-						break;
-					ipathkey = (PathKey *) lfirst(l2);
-					ipeclass = ipathkey->pk_eclass;
-					if (ieclass == ipeclass)
-						break;
-				}
-				if (ieclass != ipeclass)
-					elog(ERROR, "inner pathkeys do not match mergeclauses");
+				first_inner_match = true;
 			}
 		}
-		else
+		if (!first_inner_match)
 		{
-			/* redundant clauses ... must match some already-used pathkey */
-			ipathkey = NULL;
-			ipeclass = NULL;
+			/* redundant clause ... must match something before lip */
+			ListCell   *l2;
+
 			foreach(l2, innerpathkeys)
 			{
+				if (l2 == lip)
+					break;
 				ipathkey = (PathKey *) lfirst(l2);
 				ipeclass = ipathkey->pk_eclass;
 				if (ieclass == ipeclass)
 					break;
 			}
-			if (l2 == NULL)
+			if (ieclass != ipeclass)
 				elog(ERROR, "inner pathkeys do not match mergeclauses");
 		}
 
-		/* pathkeys should match each other too (more debugging) */
+		/*
+		 * The pathkeys should always match each other as to opfamily and
+		 * collation (which affect equality), but if we're considering a
+		 * redundant inner pathkey, its sort ordering might not match.  In
+		 * such cases we may ignore the inner pathkey's sort ordering and use
+		 * the outer's.  (In effect, we're lying to the executor about the
+		 * sort direction of this inner column, but it does not matter since
+		 * the run-time row comparisons would only reach this column when
+		 * there's equality for the earlier column containing the same eclass.
+		 * There could be only one value in this column for the range of inner
+		 * rows having a given value in the earlier column, so it does not
+		 * matter which way we imagine this column to be ordered.)  But a
+		 * non-redundant inner pathkey had better match outer's ordering too.
+		 */
 		if (opathkey->pk_opfamily != ipathkey->pk_opfamily ||
-			opathkey->pk_eclass->ec_collation != ipathkey->pk_eclass->ec_collation ||
-			opathkey->pk_strategy != ipathkey->pk_strategy ||
-			opathkey->pk_nulls_first != ipathkey->pk_nulls_first)
+			opathkey->pk_eclass->ec_collation != ipathkey->pk_eclass->ec_collation)
+			elog(ERROR, "left and right pathkeys do not match in mergejoin");
+		if (first_inner_match &&
+			(opathkey->pk_strategy != ipathkey->pk_strategy ||
+			 opathkey->pk_nulls_first != ipathkey->pk_nulls_first))
 			elog(ERROR, "left and right pathkeys do not match in mergejoin");
 
 		/* OK, save info for executor */
@@ -3854,6 +3864,7 @@ create_hashjoin_plan(PlannerInfo *root,
 	if (IS_OUTER_JOIN(best_path->jpath.jointype))
 	{
 		extract_actual_join_clauses(joinclauses,
+									best_path->jpath.path.parent->relids,
 									&joinclauses, &otherclauses);
 	}
 	else
@@ -3983,42 +3994,18 @@ NODE_CALLBACK_FUNC(replace_nestloop_params_mutator, PlannerInfo *root)
 	if (IsA(node, Var))
 	{
 		Var		   *var = (Var *) node;
-		Param	   *param;
-		NestLoopParam *nlp;
-		ListCell   *lc;
 
 		/* Upper-level Vars should be long gone at this point */
 		Assert(var->varlevelsup == 0);
 		/* If not to be replaced, we can just return the Var unmodified */
 		if (!bms_is_member(var->varno, root->curOuterRels))
 			return node;
-		/* Create a Param representing the Var */
-		param = assign_nestloop_param_var(root, var);
-		/* Is this param already listed in root->curOuterParams? */
-		foreach(lc, root->curOuterParams)
-		{
-			nlp = (NestLoopParam *) lfirst(lc);
-			if (nlp->paramno == param->paramid)
-			{
-				Assert(equal(var, nlp->paramval));
-				/* Present, so we can just return the Param */
-				return (Node *) param;
-			}
-		}
-		/* No, so add it */
-		nlp = makeNode(NestLoopParam);
-		nlp->paramno = param->paramid;
-		nlp->paramval = var;
-		root->curOuterParams = lappend(root->curOuterParams, nlp);
-		/* And return the replacement Param */
-		return (Node *) param;
+		/* Replace the Var with a nestloop Param */
+		return (Node *) replace_nestloop_param_var(root, var);
 	}
 	if (IsA(node, PlaceHolderVar))
 	{
 		PlaceHolderVar *phv = (PlaceHolderVar *) node;
-		Param	   *param;
-		NestLoopParam *nlp;
-		ListCell   *lc;
 
 		/* Upper-level PlaceHolderVars should be long gone at this point */
 		Assert(phv->phlevelsup == 0);
@@ -4055,116 +4042,12 @@ NODE_CALLBACK_FUNC(replace_nestloop_params_mutator, PlannerInfo *root)
 												root);
 			return (Node *) newphv;
 		}
-		/* Create a Param representing the PlaceHolderVar */
-		param = assign_nestloop_param_placeholdervar(root, phv);
-		/* Is this param already listed in root->curOuterParams? */
-		foreach(lc, root->curOuterParams)
-		{
-			nlp = (NestLoopParam *) lfirst(lc);
-			if (nlp->paramno == param->paramid)
-			{
-				Assert(equal(phv, nlp->paramval));
-				/* Present, so we can just return the Param */
-				return (Node *) param;
-			}
-		}
-		/* No, so add it */
-		nlp = makeNode(NestLoopParam);
-		nlp->paramno = param->paramid;
-		nlp->paramval = (Var *) phv;
-		root->curOuterParams = lappend(root->curOuterParams, nlp);
-		/* And return the replacement Param */
-		return (Node *) param;
+		/* Replace the PlaceHolderVar with a nestloop Param */
+		return (Node *) replace_nestloop_param_placeholdervar(root, phv);
 	}
 	return expression_tree_mutator(node,
 								   replace_nestloop_params_mutator_untyped,
 								   (void *) root);
-}
-
-/*
- * process_subquery_nestloop_params
- *	  Handle params of a parameterized subquery that need to be fed
- *	  from an outer nestloop.
- *
- * Currently, that would be *all* params that a subquery in FROM has demanded
- * from the current query level, since they must be LATERAL references.
- *
- * The subplan's references to the outer variables are already represented
- * as PARAM_EXEC Params, so we need not modify the subplan here.  What we
- * do need to do is add entries to root->curOuterParams to signal the parent
- * nestloop plan node that it must provide these values.
- */
-static void
-process_subquery_nestloop_params(PlannerInfo *root, List *subplan_params)
-{
-	ListCell   *ppl;
-
-	foreach(ppl, subplan_params)
-	{
-		PlannerParamItem *pitem = (PlannerParamItem *) lfirst(ppl);
-
-		if (IsA(pitem->item, Var))
-		{
-			Var		   *var = (Var *) pitem->item;
-			NestLoopParam *nlp;
-			ListCell   *lc;
-
-			/* If not from a nestloop outer rel, complain */
-			if (!bms_is_member(var->varno, root->curOuterRels))
-				elog(ERROR, "non-LATERAL parameter required by subquery");
-			/* Is this param already listed in root->curOuterParams? */
-			foreach(lc, root->curOuterParams)
-			{
-				nlp = (NestLoopParam *) lfirst(lc);
-				if (nlp->paramno == pitem->paramId)
-				{
-					Assert(equal(var, nlp->paramval));
-					/* Present, so nothing to do */
-					break;
-				}
-			}
-			if (lc == NULL)
-			{
-				/* No, so add it */
-				nlp = makeNode(NestLoopParam);
-				nlp->paramno = pitem->paramId;
-				nlp->paramval = copyObject(var);
-				root->curOuterParams = lappend(root->curOuterParams, nlp);
-			}
-		}
-		else if (IsA(pitem->item, PlaceHolderVar))
-		{
-			PlaceHolderVar *phv = (PlaceHolderVar *) pitem->item;
-			NestLoopParam *nlp;
-			ListCell   *lc;
-
-			/* If not from a nestloop outer rel, complain */
-			if (!bms_is_subset(find_placeholder_info(root, phv, false)->ph_eval_at,
-							   root->curOuterRels))
-				elog(ERROR, "non-LATERAL parameter required by subquery");
-			/* Is this param already listed in root->curOuterParams? */
-			foreach(lc, root->curOuterParams)
-			{
-				nlp = (NestLoopParam *) lfirst(lc);
-				if (nlp->paramno == pitem->paramId)
-				{
-					Assert(equal(phv, nlp->paramval));
-					/* Present, so nothing to do */
-					break;
-				}
-			}
-			if (lc == NULL)
-			{
-				/* No, so add it */
-				nlp = makeNode(NestLoopParam);
-				nlp->paramno = pitem->paramId;
-				nlp->paramval = copyObject(phv);
-				root->curOuterParams = lappend(root->curOuterParams, nlp);
-			}
-		}
-		else
-			elog(ERROR, "unexpected type of subquery parameter");
-	}
 }
 
 /*

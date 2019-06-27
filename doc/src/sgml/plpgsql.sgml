@@ -3173,6 +3173,10 @@ FETCH <optional> <replaceable>direction</replaceable> { FROM | IN } </optional> 
      <literal>BACKWARD</>.
      Omitting <replaceable>direction</replaceable> is the same
      as specifying <literal>NEXT</>.
+     In the forms using a <replaceable>count</replaceable>,
+     the <replaceable>count</replaceable> can be any integer-valued
+     expression (unlike the SQL <command>FETCH</command> command,
+     which only allows an integer constant).
      <replaceable>direction</replaceable> values that require moving
      backward are likely to fail unless the cursor was declared or opened
      with the <literal>SCROLL</> option.
@@ -3208,26 +3212,6 @@ MOVE <optional> <replaceable>direction</replaceable> { FROM | IN } </optional> <
      cursor and does not return the row moved to. As with <command>SELECT
      INTO</command>, the special variable <literal>FOUND</literal> can
      be checked to see whether there was a next row to move to.
-    </para>
-
-    <para>
-     The <replaceable>direction</replaceable> clause can be any of the
-     variants allowed in the SQL <xref linkend="sql-fetch">
-     command, namely
-     <literal>NEXT</>,
-     <literal>PRIOR</>,
-     <literal>FIRST</>,
-     <literal>LAST</>,
-     <literal>ABSOLUTE</> <replaceable>count</replaceable>,
-     <literal>RELATIVE</> <replaceable>count</replaceable>,
-     <literal>ALL</>,
-     <literal>FORWARD</> <optional> <replaceable>count</replaceable> | <literal>ALL</> </optional>, or
-     <literal>BACKWARD</> <optional> <replaceable>count</replaceable> | <literal>ALL</> </optional>.
-     Omitting <replaceable>direction</replaceable> is the same
-     as specifying <literal>NEXT</>.
-     <replaceable>direction</replaceable> values that require moving
-     backward are likely to fail unless the cursor was declared or opened
-     with the <literal>SCROLL</> option.
     </para>
 
     <para>
@@ -3714,7 +3698,7 @@ ASSERT <replaceable class="parameter">condition</replaceable> <optional> , <repl
    command, declaring it as a function with no arguments and a return type of
    <type>trigger</> (for data change triggers) or
    <type>event_trigger</> (for database event triggers).
-   Special local variables named <varname>PG_<replaceable>something</></> are
+   Special local variables named <varname>TG_<replaceable>something</></> are
    automatically defined to describe the condition that triggered the call.
   </para>
 
@@ -4942,7 +4926,7 @@ CREATE FUNCTION
   <para>
    <application>PL/pgSQL</application> is similar to PL/SQL in many
    aspects. It is a block-structured, imperative language, and all
-   variables have to be declared.  Assignments, loops, conditionals
+   variables have to be declared.  Assignments, loops, and conditionals
    are similar.  The main differences you should keep in mind when
    porting from <application>PL/SQL</> to
    <application>PL/pgSQL</application> are:
@@ -5561,27 +5545,29 @@ $$ LANGUAGE plpgsql STRICT IMMUTABLE;
     <primary><function>instr</> function</primary>
    </indexterm>
 
-<programlisting>
+<programlisting><![CDATA[
 --
 -- instr functions that mimic Oracle's counterpart
--- Syntax: instr(string1, string2, [n], [m]) where [] denotes optional parameters.
+-- Syntax: instr(string1, string2 [, n [, m]])
+-- where [] denotes optional parameters.
 --
--- Searches string1 beginning at the nth character for the mth occurrence
--- of string2.  If n is negative, search backwards.  If m is not passed,
--- assume 1 (search starts at first character).
+-- Search string1, beginning at the nth character, for the mth occurrence
+-- of string2.  If n is negative, search backwards, starting at the abs(n)'th
+-- character from the end of string1.
+-- If n is not passed, assume 1 (search starts at first character).
+-- If m is not passed, assume 1 (find first occurrence).
+-- Returns starting index of string2 in string1, or 0 if string2 is not found.
 --
 
 CREATE FUNCTION instr(varchar, varchar) RETURNS integer AS $$
-DECLARE
-    pos integer;
 BEGIN
-    pos:= instr($1, $2, 1);
-    RETURN pos;
+    RETURN instr($1, $2, 1);
 END;
 $$ LANGUAGE plpgsql STRICT IMMUTABLE;
 
 
-CREATE FUNCTION instr(string varchar, string_to_search varchar, beg_index integer)
+CREATE FUNCTION instr(string varchar, string_to_search_for varchar,
+                      beg_index integer)
 RETURNS integer AS $$
 DECLARE
     pos integer NOT NULL DEFAULT 0;
@@ -5590,25 +5576,23 @@ DECLARE
     length integer;
     ss_length integer;
 BEGIN
-    IF beg_index &gt; 0 THEN
+    IF beg_index > 0 THEN
         temp_str := substring(string FROM beg_index);
-        pos := position(string_to_search IN temp_str);
+        pos := position(string_to_search_for IN temp_str);
 
         IF pos = 0 THEN
             RETURN 0;
         ELSE
             RETURN pos + beg_index - 1;
         END IF;
-    ELSIF beg_index &lt; 0 THEN
-        ss_length := char_length(string_to_search);
+    ELSIF beg_index < 0 THEN
+        ss_length := char_length(string_to_search_for);
         length := char_length(string);
-        beg := length + beg_index - ss_length + 2;
+        beg := length + 1 + beg_index;
 
-        WHILE beg &gt; 0 LOOP
+        WHILE beg > 0 LOOP
             temp_str := substring(string FROM beg FOR ss_length);
-            pos := position(string_to_search IN temp_str);
-
-            IF pos &gt; 0 THEN
+            IF string_to_search_for = temp_str THEN
                 RETURN beg;
             END IF;
 
@@ -5623,7 +5607,7 @@ END;
 $$ LANGUAGE plpgsql STRICT IMMUTABLE;
 
 
-CREATE FUNCTION instr(string varchar, string_to_search varchar,
+CREATE FUNCTION instr(string varchar, string_to_search_for varchar,
                       beg_index integer, occur_index integer)
 RETURNS integer AS $$
 DECLARE
@@ -5635,39 +5619,32 @@ DECLARE
     length integer;
     ss_length integer;
 BEGIN
-    IF beg_index &gt; 0 THEN
-        beg := beg_index;
-        temp_str := substring(string FROM beg_index);
+    IF occur_index <= 0 THEN
+        RAISE 'argument ''%'' is out of range', occur_index
+          USING ERRCODE = '22003';
+    END IF;
 
+    IF beg_index > 0 THEN
+        beg := beg_index - 1;
         FOR i IN 1..occur_index LOOP
-            pos := position(string_to_search IN temp_str);
-
-            IF i = 1 THEN
-                beg := beg + pos - 1;
-            ELSE
-                beg := beg + pos;
-            END IF;
-
             temp_str := substring(string FROM beg + 1);
+            pos := position(string_to_search_for IN temp_str);
+            IF pos = 0 THEN
+                RETURN 0;
+            END IF;
+            beg := beg + pos;
         END LOOP;
 
-        IF pos = 0 THEN
-            RETURN 0;
-        ELSE
-            RETURN beg;
-        END IF;
-    ELSIF beg_index &lt; 0 THEN
-        ss_length := char_length(string_to_search);
+        RETURN beg;
+    ELSIF beg_index < 0 THEN
+        ss_length := char_length(string_to_search_for);
         length := char_length(string);
-        beg := length + beg_index - ss_length + 2;
+        beg := length + 1 + beg_index;
 
-        WHILE beg &gt; 0 LOOP
+        WHILE beg > 0 LOOP
             temp_str := substring(string FROM beg FOR ss_length);
-            pos := position(string_to_search IN temp_str);
-
-            IF pos &gt; 0 THEN
+            IF string_to_search_for = temp_str THEN
                 occur_number := occur_number + 1;
-
                 IF occur_number = occur_index THEN
                     RETURN beg;
                 END IF;
@@ -5682,6 +5659,7 @@ BEGIN
     END IF;
 END;
 $$ LANGUAGE plpgsql STRICT IMMUTABLE;
+]]>
 </programlisting>
   </sect2>
 

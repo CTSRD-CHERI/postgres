@@ -1681,8 +1681,8 @@ set_upper_references(PlannerInfo *root, Plan *plan, int rtoffset)
 		TargetEntry *tle = (TargetEntry *) lfirst(l);
 		Node	   *newexpr;
 
-		/* If it's a non-Var sort/group item, first try to match by sortref */
-		if (tle->ressortgroupref != 0 && !IsA(tle->expr, Var))
+		/* If it's a sort/group item, first try to match by sortref */
+		if (tle->ressortgroupref != 0)
 		{
 			newexpr = (Node *)
 				search_indexed_tlist_for_sortgroupref((Node *) tle->expr,
@@ -2043,7 +2043,6 @@ search_indexed_tlist_for_non_var(Node *node,
 
 /*
  * search_indexed_tlist_for_sortgroupref --- find a sort/group expression
- *		(which is assumed not to be just a Var)
  *
  * If a match is found, return a Var constructed to reference the tlist item.
  * If no match, return NULL.
@@ -2204,8 +2203,6 @@ NODE_CALLBACK_FUNC(fix_join_expr_mutator, fix_join_expr_context *context)
 		/* If not supplied by input plans, evaluate the contained expr */
 		return fix_join_expr_mutator((Node *) phv->phexpr, context);
 	}
-	if (IsA(node, Param))
-		return fix_param_node(context->root, (Param *) node);
 	/* Try matching more complex expressions too, if tlists have any */
 	if (context->outer_itlist && context->outer_itlist->has_non_vars)
 	{
@@ -2223,6 +2220,9 @@ NODE_CALLBACK_FUNC(fix_join_expr_mutator, fix_join_expr_context *context)
 		if (newvar)
 			return (Node *) newvar;
 	}
+	/* Special cases (apply only AFTER failing to match to lower tlist) */
+	if (IsA(node, Param))
+		return fix_param_node(context->root, (Param *) node);
 	fix_expr_common(context->root, node);
 	return expression_tree_mutator(node,
 								   fix_join_expr_mutator_untyped,
@@ -2309,6 +2309,16 @@ NODE_CALLBACK_FUNC(fix_upper_expr_mutator, fix_upper_expr_context *context)
 		/* If not supplied by input plan, evaluate the contained expr */
 		return fix_upper_expr_mutator((Node *) phv->phexpr, context);
 	}
+	/* Try matching more complex expressions too, if tlist has any */
+	if (context->subplan_itlist->has_non_vars)
+	{
+		newvar = search_indexed_tlist_for_non_var(node,
+												  context->subplan_itlist,
+												  context->newvarno);
+		if (newvar)
+			return (Node *) newvar;
+	}
+	/* Special cases (apply only AFTER failing to match to lower tlist) */
 	if (IsA(node, Param))
 		return fix_param_node(context->root, (Param *) node);
 	if (IsA(node, Aggref))
@@ -2332,15 +2342,6 @@ NODE_CALLBACK_FUNC(fix_upper_expr_mutator, fix_upper_expr_context *context)
 			}
 		}
 		/* If no match, just fall through to process it normally */
-	}
-	/* Try matching more complex expressions too, if tlist has any */
-	if (context->subplan_itlist->has_non_vars)
-	{
-		newvar = search_indexed_tlist_for_non_var(node,
-												  context->subplan_itlist,
-												  context->newvarno);
-		if (newvar)
-			return (Node *) newvar;
 	}
 	fix_expr_common(context->root, node);
 	return expression_tree_mutator(node,

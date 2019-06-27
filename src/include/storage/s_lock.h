@@ -543,6 +543,30 @@ tas(volatile slock_t *lock)
 #endif	 /* (__mc68000__ || __m68k__) && __linux__ */
 
 
+/* Motorola 88k */
+#if defined(__m88k__)
+#define HAS_TEST_AND_SET
+
+typedef unsigned int slock_t;
+
+#define TAS(lock) tas(lock)
+
+static __inline__ int
+tas(volatile slock_t *lock)
+{
+	register slock_t _res = 1;
+
+	__asm__ __volatile__(
+		"	xmem	%0, %2, %%r0	\n"
+:		"+r"(_res), "+m"(*lock)
+:		"r"(lock)
+:		"memory");
+	return (int) _res;
+}
+
+#endif	 /* __m88k__ */
+
+
 /*
  * VAXen -- even multiprocessor ones
  * (thanks to Tom Ivar Helbekkmo)
@@ -574,8 +598,6 @@ tas(volatile slock_t *lock)
 
 
 #if defined(__mips__) && !defined(__sgi)	/* non-SGI MIPS */
-/* Note: on SGI we use the OS' mutex ABI, see below */
-/* Note: R10000 processors require a separate SYNC */
 #define HAS_TEST_AND_SET
 
 /* Use C11 atomics for now */
@@ -583,6 +605,25 @@ typedef unsigned int slock_t;
 
 #ifndef __CHERI__
 #define TAS(lock) tas(lock)
+
+/*
+ * Original MIPS-I processors lacked the LL/SC instructions, but if we are
+ * so unfortunate as to be running on one of those, we expect that the kernel
+ * will handle the illegal-instruction traps and emulate them for us.  On
+ * anything newer (and really, MIPS-I is extinct) LL/SC is the only sane
+ * choice because any other synchronization method must involve a kernel
+ * call.  Unfortunately, many toolchains still default to MIPS-I as the
+ * codegen target; if the symbol __mips shows that that's the case, we
+ * have to force the assembler to accept LL/SC.
+ *
+ * R10000 and up processors require a separate SYNC, which has the same
+ * issues as LL/SC.
+ */
+#if __mips < 2
+#define MIPS_SET_MIPS2	"       .set mips2          \n"
+#else
+#define MIPS_SET_MIPS2
+#endif
 
 static __inline__ int
 tas(volatile slock_t *lock)
@@ -593,7 +634,7 @@ tas(volatile slock_t *lock)
 
 	__asm__ __volatile__(
 		"       .set push           \n"
-		"       .set mips2          \n"
+		MIPS_SET_MIPS2
 		"       .set noreorder      \n"
 		"       .set nomacro        \n"
 		"       ll      %0, %2      \n"
@@ -615,7 +656,7 @@ do \
 { \
 	__asm__ __volatile__( \
 		"       .set push           \n" \
-		"       .set mips2          \n" \
+		MIPS_SET_MIPS2 \
 		"       .set noreorder      \n" \
 		"       .set nomacro        \n" \
 		"       sync                \n" \

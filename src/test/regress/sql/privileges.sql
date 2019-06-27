@@ -129,7 +129,7 @@ SELECT * FROM atest1; -- ok
 
 -- test leaky-function protections in selfuncs
 
--- regress_user1 will own a table and provide a view for it.
+-- regress_user1 will own a table and provide views for it.
 SET SESSION AUTHORIZATION regress_user1;
 
 CREATE TABLE atest12 as
@@ -144,10 +144,13 @@ CREATE FUNCTION leak(integer,integer) RETURNS boolean
 CREATE OPERATOR <<< (procedure = leak, leftarg = integer, rightarg = integer,
                      restrict = scalarltsel);
 
--- view with leaky operator
+-- views with leaky operator
 CREATE VIEW atest12v AS
   SELECT * FROM atest12 WHERE b <<< 5;
+CREATE VIEW atest12sbv WITH (security_barrier=true) AS
+  SELECT * FROM atest12 WHERE b <<< 5;
 GRANT SELECT ON atest12v TO PUBLIC;
+GRANT SELECT ON atest12sbv TO PUBLIC;
 
 -- This plan should use nestloop, knowing that few rows will be selected.
 EXPLAIN (COSTS OFF) SELECT * FROM atest12v x, atest12v y WHERE x.a = y.b;
@@ -155,6 +158,10 @@ EXPLAIN (COSTS OFF) SELECT * FROM atest12v x, atest12v y WHERE x.a = y.b;
 -- And this one.
 EXPLAIN (COSTS OFF) SELECT * FROM atest12 x, atest12 y
   WHERE x.a = y.b and abs(y.a) <<< 5;
+
+-- This should also be a nestloop, but the security barrier forces the inner
+-- scan to be materialized
+EXPLAIN (COSTS OFF) SELECT * FROM atest12sbv x, atest12sbv y WHERE x.a = y.b;
 
 -- Check if regress_user2 can break security.
 SET SESSION AUTHORIZATION regress_user2;
@@ -168,15 +175,25 @@ CREATE OPERATOR >>> (procedure = leak2, leftarg = integer, rightarg = integer,
 -- This should not show any "leak" notices before failing.
 EXPLAIN (COSTS OFF) SELECT * FROM atest12 WHERE a >>> 0;
 
--- This plan should use hashjoin, as it will expect many rows to be selected.
+-- These plans should continue to use a nestloop, since they execute with the
+-- privileges of the view owner.
 EXPLAIN (COSTS OFF) SELECT * FROM atest12v x, atest12v y WHERE x.a = y.b;
+EXPLAIN (COSTS OFF) SELECT * FROM atest12sbv x, atest12sbv y WHERE x.a = y.b;
+
+-- A non-security barrier view does not guard against information leakage.
+EXPLAIN (COSTS OFF) SELECT * FROM atest12v x, atest12v y
+  WHERE x.a = y.b and abs(y.a) <<< 5;
+
+-- But a security barrier view isolates the leaky operator.
+EXPLAIN (COSTS OFF) SELECT * FROM atest12sbv x, atest12sbv y
+  WHERE x.a = y.b and abs(y.a) <<< 5;
 
 -- Now regress_user1 grants sufficient access to regress_user2.
 SET SESSION AUTHORIZATION regress_user1;
 GRANT SELECT (a, b) ON atest12 TO PUBLIC;
 SET SESSION AUTHORIZATION regress_user2;
 
--- Now regress_user2 will also get a good row estimate.
+-- regress_user2 should continue to get a good row estimate.
 EXPLAIN (COSTS OFF) SELECT * FROM atest12v x, atest12v y WHERE x.a = y.b;
 
 -- But not for this, due to lack of table-wide permissions needed
@@ -320,9 +337,24 @@ INSERT INTO atest5(two) VALUES (6) ON CONFLICT (two) DO UPDATE set three = EXCLU
 INSERT INTO atest5(two) VALUES (6) ON CONFLICT (two) DO UPDATE set three = EXCLUDED.three;
 INSERT INTO atest5(two) VALUES (6) ON CONFLICT (two) DO UPDATE set one = 8; -- fails (due to UPDATE)
 INSERT INTO atest5(three) VALUES (4) ON CONFLICT (two) DO UPDATE set three = 10; -- fails (due to INSERT)
+
 -- Check that the columns in the inference require select privileges
--- Error. No privs on four
-INSERT INTO atest5(three) VALUES (4) ON CONFLICT (four) DO UPDATE set three = 10;
+INSERT INTO atest5(four) VALUES (4); -- fail
+
+SET SESSION AUTHORIZATION regress_user1;
+GRANT INSERT (four) ON atest5 TO regress_user4;
+SET SESSION AUTHORIZATION regress_user4;
+
+INSERT INTO atest5(four) VALUES (4) ON CONFLICT (four) DO UPDATE set three = 3; -- fails (due to SELECT)
+INSERT INTO atest5(four) VALUES (4) ON CONFLICT ON CONSTRAINT atest5_four_key DO UPDATE set three = 3; -- fails (due to SELECT)
+INSERT INTO atest5(four) VALUES (4); -- ok
+
+SET SESSION AUTHORIZATION regress_user1;
+GRANT SELECT (four) ON atest5 TO regress_user4;
+SET SESSION AUTHORIZATION regress_user4;
+
+INSERT INTO atest5(four) VALUES (4) ON CONFLICT (four) DO UPDATE set three = 3; -- ok
+INSERT INTO atest5(four) VALUES (4) ON CONFLICT ON CONSTRAINT atest5_four_key DO UPDATE set three = 3; -- ok
 
 SET SESSION AUTHORIZATION regress_user1;
 REVOKE ALL (one) ON atest5 FROM regress_user4;
@@ -674,6 +706,24 @@ from (select oid from pg_class where relname = 'atest1') as t1;
 select has_table_privilege(t1.oid,'trigger')
 from (select oid from pg_class where relname = 'atest1') as t1;
 
+-- has_column_privilege function
+
+-- bad-input checks (as non-super-user)
+select has_column_privilege('pg_authid',NULL,'select');
+select has_column_privilege('pg_authid','nosuchcol','select');
+select has_column_privilege(9999,'nosuchcol','select');
+select has_column_privilege(9999,99::int2,'select');
+select has_column_privilege('pg_authid',99::int2,'select');
+select has_column_privilege(9999,99::int2,'select');
+
+create temp table mytable(f1 int, f2 int, f3 int);
+alter table mytable drop column f2;
+select has_column_privilege('mytable','f2','select');
+select has_column_privilege('mytable','........pg.dropped.2........','select');
+select has_column_privilege('mytable',2::int2,'select');
+revoke select on table mytable from regress_user3;
+select has_column_privilege('mytable',2::int2,'select');
+drop table mytable;
 
 -- Grant options
 
@@ -770,6 +820,9 @@ SET SESSION AUTHORIZATION regress_user2;
 SELECT lo_create(2001);
 SELECT lo_create(2002);
 
+SELECT loread(lo_open(1001, x'20000'::int), 32);	-- allowed, for now
+SELECT lowrite(lo_open(1001, x'40000'::int), 'abcd');	-- fail, wrong mode
+
 SELECT loread(lo_open(1001, x'40000'::int), 32);
 SELECT loread(lo_open(1002, x'40000'::int), 32);	-- to be denied
 SELECT loread(lo_open(1003, x'40000'::int), 32);
@@ -809,6 +862,7 @@ SET SESSION AUTHORIZATION regress_user4;
 SELECT loread(lo_open(1002, x'40000'::int), 32);	-- to be denied
 SELECT lowrite(lo_open(1002, x'20000'::int), 'abcd');	-- to be denied
 SELECT lo_truncate(lo_open(1002, x'20000'::int), 10);	-- to be denied
+SELECT lo_put(1002, 1, 'abcd');				-- to be denied
 SELECT lo_unlink(1002);					-- to be denied
 SELECT lo_export(1001, '/dev/null');			-- to be denied
 

@@ -103,6 +103,7 @@
 #include "libpq/auth.h"
 #include "libpq/ip.h"
 #include "libpq/libpq.h"
+#include "libpq/pqformat.h"
 #include "libpq/pqsignal.h"
 #include "miscadmin.h"
 #include "pg_getopt.h"
@@ -402,6 +403,7 @@ static void ExitPostmaster(int status) pg_attribute_noreturn();
 static int	ServerLoop(void);
 static int	BackendStartup(Port *port);
 static int	ProcessStartupPacket(Port *port, bool SSLdone);
+static void SendNegotiateProtocolVersion(List *unrecognized_protocol_options);
 static void processCancelRequest(Port *port, void *pkt);
 static int	initMasks(fd_set *rmask);
 static void report_fork_failure_to_client(Port *port, int errnum);
@@ -481,6 +483,7 @@ typedef struct
 #ifndef WIN32
 	unsigned long UsedShmemSegID;
 #else
+	void	   *ShmemProtectiveRegion;
 	HANDLE		UsedShmemSegID;
 #endif
 	void	   *UsedShmemSegAddr;
@@ -2016,12 +2019,9 @@ retry1:
 	 */
 	FrontendProtocol = proto;
 
-	/* Check we can handle the protocol the frontend is using. */
-
+	/* Check that the major protocol version is in range. */
 	if (PG_PROTOCOL_MAJOR(proto) < PG_PROTOCOL_MAJOR(PG_PROTOCOL_EARLIEST) ||
-		PG_PROTOCOL_MAJOR(proto) > PG_PROTOCOL_MAJOR(PG_PROTOCOL_LATEST) ||
-		(PG_PROTOCOL_MAJOR(proto) == PG_PROTOCOL_MAJOR(PG_PROTOCOL_LATEST) &&
-		 PG_PROTOCOL_MINOR(proto) > PG_PROTOCOL_MINOR(PG_PROTOCOL_LATEST)))
+		PG_PROTOCOL_MAJOR(proto) > PG_PROTOCOL_MAJOR(PG_PROTOCOL_LATEST))
 		ereport(FATAL,
 				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 				 errmsg("unsupported frontend protocol %u.%u: server supports %u.0 to %u.%u",
@@ -2043,6 +2043,7 @@ retry1:
 	if (PG_PROTOCOL_MAJOR(proto) >= 3)
 	{
 		int32		offset = sizeof(ProtocolVersion);
+		List	   *unrecognized_protocol_options = NIL;
 
 		/*
 		 * Scan packet body for name/option pairs.  We can assume any string
@@ -2092,6 +2093,16 @@ retry1:
 								valptr),
 							 errhint("Valid values are: \"false\", 0, \"true\", 1, \"database\".")));
 			}
+			else if (strncmp(nameptr, "_pq_.", 5) == 0)
+			{
+				/*
+				 * Any option beginning with _pq_. is reserved for use as a
+				 * protocol-level option, but at present no such options are
+				 * defined.
+				 */
+				unrecognized_protocol_options =
+					lappend(unrecognized_protocol_options, pstrdup(nameptr));
+			}
 			else
 			{
 				/* Assume it's a generic GUC option */
@@ -2111,6 +2122,16 @@ retry1:
 			ereport(FATAL,
 					(errcode(ERRCODE_PROTOCOL_VIOLATION),
 					 errmsg("invalid startup packet layout: expected terminator as last byte")));
+
+		/*
+		 * If the client requested a newer protocol version or if the client
+		 * requested any protocol options we didn't recognize, let them know
+		 * the newest minor protocol version we do support and the names of any
+		 * unrecognized options.
+		 */
+		if (PG_PROTOCOL_MINOR(proto) > PG_PROTOCOL_MINOR(PG_PROTOCOL_LATEST) ||
+			unrecognized_protocol_options != NIL)
+			SendNegotiateProtocolVersion(unrecognized_protocol_options);
 	}
 	else
 	{
@@ -2224,6 +2245,34 @@ retry1:
 	return STATUS_OK;
 }
 
+/*
+ * Send a NegotiateProtocolVersion to the client.  This lets the client know
+ * that they have requested a newer minor protocol version than we are able
+ * to speak.  We'll speak the highest version we know about; the client can,
+ * of course, abandon the connection if that's a problem.
+ *
+ * We also include in the response a list of protocol options we didn't
+ * understand.  This allows clients to include optional parameters that might
+ * be present either in newer protocol versions or third-party protocol
+ * extensions without fear of having to reconnect if those options are not
+ * understood, while at the same time making certain that the client is aware
+ * of which options were actually accepted.
+ */
+static void
+SendNegotiateProtocolVersion(List *unrecognized_protocol_options)
+{
+	StringInfoData buf;
+	ListCell   *lc;
+
+	pq_beginmessage(&buf, 'v'); /* NegotiateProtocolVersion */
+	pq_sendint(&buf, PG_PROTOCOL_LATEST, 4);
+	pq_sendint(&buf, list_length(unrecognized_protocol_options), 4);
+	foreach(lc, unrecognized_protocol_options)
+		pq_sendstring(&buf, lfirst(lc));
+	pq_endmessage(&buf);
+
+	/* no need to flush, some other message will follow */
+}
 
 /*
  * The client has sent a cancel request packet, not a normal
@@ -2485,7 +2534,7 @@ reset_shared(int port)
 	 * determine IPC keys.  This helps ensure that we will clean up dead IPC
 	 * objects if the postmaster crashes and is restarted.
 	 */
-	CreateSharedMemoryAndSemaphores(false, port);
+	CreateSharedMemoryAndSemaphores(port);
 }
 
 
@@ -2638,7 +2687,7 @@ pmdie(SIGNAL_ARGS)
 				signal_child(BgWriterPID, SIGTERM);
 			if (WalReceiverPID != 0)
 				signal_child(WalReceiverPID, SIGTERM);
-			if (pmState == PM_RECOVERY)
+			if (pmState == PM_STARTUP || pmState == PM_RECOVERY)
 			{
 				SignalSomeChildren(SIGTERM, BACKEND_TYPE_BGWORKER);
 
@@ -3670,12 +3719,8 @@ PostmasterStateMachine(void)
 		 * dead_end children left. There shouldn't be any regular backends
 		 * left by now anyway; what we're really waiting for is walsenders and
 		 * archiver.
-		 *
-		 * Walreceiver should normally be dead by now, but not when a fast
-		 * shutdown is performed during recovery.
 		 */
-		if (PgArchPID == 0 && CountChildren(BACKEND_TYPE_ALL) == 0 &&
-			WalReceiverPID == 0)
+		if (PgArchPID == 0 && CountChildren(BACKEND_TYPE_ALL) == 0)
 		{
 			pmState = PM_WAIT_DEAD_END;
 		}
@@ -4786,7 +4831,7 @@ SubPostmasterMain(int argc, char *argv[])
 		InitProcess();
 
 		/* Attach process to shared data structures */
-		CreateSharedMemoryAndSemaphores(false, 0);
+		CreateSharedMemoryAndSemaphores(0);
 
 		/* And run the backend */
 		BackendRun(&port);		/* does not return */
@@ -4800,7 +4845,7 @@ SubPostmasterMain(int argc, char *argv[])
 		InitAuxiliaryProcess();
 
 		/* Attach process to shared data structures */
-		CreateSharedMemoryAndSemaphores(false, 0);
+		CreateSharedMemoryAndSemaphores(0);
 
 		AuxiliaryProcessMain(argc - 2, argv + 2);		/* does not return */
 	}
@@ -4813,7 +4858,7 @@ SubPostmasterMain(int argc, char *argv[])
 		InitProcess();
 
 		/* Attach process to shared data structures */
-		CreateSharedMemoryAndSemaphores(false, 0);
+		CreateSharedMemoryAndSemaphores(0);
 
 		AutoVacLauncherMain(argc - 2, argv + 2);		/* does not return */
 	}
@@ -4826,7 +4871,7 @@ SubPostmasterMain(int argc, char *argv[])
 		InitProcess();
 
 		/* Attach process to shared data structures */
-		CreateSharedMemoryAndSemaphores(false, 0);
+		CreateSharedMemoryAndSemaphores(0);
 
 		AutoVacWorkerMain(argc - 2, argv + 2);	/* does not return */
 	}
@@ -4844,7 +4889,7 @@ SubPostmasterMain(int argc, char *argv[])
 		InitProcess();
 
 		/* Attach process to shared data structures */
-		CreateSharedMemoryAndSemaphores(false, 0);
+		CreateSharedMemoryAndSemaphores(0);
 
 		/* Fetch MyBgworkerEntry from shared memory */
 		shmem_slot = atoi(argv[1] + 15);
@@ -5036,16 +5081,25 @@ sigusr1_handler(SIGNAL_ARGS)
 		MaybeStartWalReceiver();
 	}
 
-	if (CheckPostmasterSignal(PMSIGNAL_ADVANCE_STATE_MACHINE) &&
-		(pmState == PM_WAIT_BACKUP || pmState == PM_WAIT_BACKENDS))
+	/*
+	 * Try to advance postmaster's state machine, if a child requests it.
+	 *
+	 * Be careful about the order of this action relative to sigusr1_handler's
+	 * other actions.  Generally, this should be after other actions, in case
+	 * they have effects PostmasterStateMachine would need to know about.
+	 * However, we should do it before the CheckPromoteSignal step, which
+	 * cannot have any (immediate) effect on the state machine, but does
+	 * depend on what state we're in now.
+	 */
+	if (CheckPostmasterSignal(PMSIGNAL_ADVANCE_STATE_MACHINE))
 	{
-		/* Advance postmaster's state machine */
 		PostmasterStateMachine();
 	}
 
-	if (CheckPromoteSignal() && StartupPID != 0 &&
+	if (StartupPID != 0 &&
 		(pmState == PM_STARTUP || pmState == PM_RECOVERY ||
-		 pmState == PM_HOT_STANDBY || pmState == PM_WAIT_READONLY))
+		 pmState == PM_HOT_STANDBY || pmState == PM_WAIT_READONLY) &&
+		CheckPromoteSignal())
 	{
 		/* Tell startup process to finish recovery */
 		signal_child(StartupPID, SIGUSR2);
@@ -5387,6 +5441,14 @@ StartAutovacuumWorker(void)
 /*
  * MaybeStartWalReceiver
  *		Start the WAL receiver process, if not running and our state allows.
+ *
+ * Note: if WalReceiverPID is already nonzero, it might seem that we should
+ * clear WalReceiverRequested.  However, there's a race condition if the
+ * walreceiver terminates and the startup process immediately requests a new
+ * one: it's quite possible to get the signal for the request before reaping
+ * the dead walreceiver process.  Better to risk launching an extra
+ * walreceiver than to miss launching one we need.  (The walreceiver code
+ * has logic to recognize that it should go away if not needed.)
  */
 static void
 MaybeStartWalReceiver(void)
@@ -5397,7 +5459,9 @@ MaybeStartWalReceiver(void)
 		Shutdown == NoShutdown)
 	{
 		WalReceiverPID = StartWalReceiver();
-		WalReceiverRequested = false;
+		if (WalReceiverPID != 0)
+			WalReceiverRequested = false;
+		/* else leave the flag set, so we'll try again later */
 	}
 }
 
@@ -5773,7 +5837,16 @@ maybe_start_bgworkers(void)
 		{
 			if (rw->rw_worker.bgw_restart_time == BGW_NEVER_RESTART)
 			{
+				int			notify_pid;
+
+				notify_pid = rw->rw_worker.bgw_notify_pid;
+
 				ForgetBackgroundWorker(&iter);
+
+				/* Report worker is gone now. */
+				if (notify_pid != 0)
+					kill(notify_pid, SIGUSR1);
+
 				continue;
 			}
 
@@ -5895,6 +5968,9 @@ save_backend_variables(BackendParameters *param, Port *port,
 	param->MyCancelKey = MyCancelKey;
 	param->MyPMChildSlot = MyPMChildSlot;
 
+#ifdef WIN32
+	param->ShmemProtectiveRegion = ShmemProtectiveRegion;
+#endif
 	param->UsedShmemSegID = UsedShmemSegID;
 	param->UsedShmemSegAddr = UsedShmemSegAddr;
 
@@ -6128,6 +6204,9 @@ restore_backend_variables(BackendParameters *param, Port *port)
 	MyCancelKey = param->MyCancelKey;
 	MyPMChildSlot = param->MyPMChildSlot;
 
+#ifdef WIN32
+	ShmemProtectiveRegion = param->ShmemProtectiveRegion;
+#endif
 	UsedShmemSegID = param->UsedShmemSegID;
 	UsedShmemSegAddr = param->UsedShmemSegAddr;
 

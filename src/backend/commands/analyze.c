@@ -356,10 +356,14 @@ do_analyze_rel(Relation onerel, int options, VacuumParams *params,
 	/*
 	 * Determine which columns to analyze
 	 *
-	 * Note that system attributes are never analyzed.
+	 * Note that system attributes are never analyzed, so we just reject them
+	 * at the lookup stage.  We also reject duplicate column mentions.  (We
+	 * could alternatively ignore duplicates, but analyzing a column twice
+	 * won't work; we'd end up making a conflicting update in pg_statistic.)
 	 */
 	if (va_cols != NIL)
 	{
+		Bitmapset  *unique_cols = NULL;
 		ListCell   *le;
 
 		vacattrstats = (VacAttrStats **) palloc(list_length(va_cols) *
@@ -375,6 +379,13 @@ do_analyze_rel(Relation onerel, int options, VacuumParams *params,
 						(errcode(ERRCODE_UNDEFINED_COLUMN),
 					errmsg("column \"%s\" of relation \"%s\" does not exist",
 						   col, RelationGetRelationName(onerel))));
+			if (bms_is_member(i, unique_cols))
+				ereport(ERROR,
+						(errcode(ERRCODE_DUPLICATE_COLUMN),
+						 errmsg("column \"%s\" of relation \"%s\" appears more than once",
+								col, RelationGetRelationName(onerel))));
+			unique_cols = bms_add_member(unique_cols, i);
+
 			vacattrstats[tcnt] = examine_attribute(onerel, i, NULL);
 			if (vacattrstats[tcnt] != NULL)
 				tcnt++;
@@ -1099,20 +1110,35 @@ acquire_sample_rows(Relation onerel, int elevel,
 				case HEAPTUPLE_DELETE_IN_PROGRESS:
 
 					/*
-					 * We count delete-in-progress rows as still live, using
-					 * the same reasoning given above; but we don't bother to
-					 * include them in the sample.
+					 * We count and sample delete-in-progress rows the same as
+					 * live ones, so that the stats counters come out right if
+					 * the deleting transaction commits after us, per the same
+					 * reasoning given above.
 					 *
 					 * If the delete was done by our own transaction, however,
 					 * we must count the row as dead to make
 					 * pgstat_report_analyze's stats adjustments come out
 					 * right.  (Note: this works out properly when the row was
 					 * both inserted and deleted in our xact.)
+					 *
+					 * The net effect of these choices is that we act as
+					 * though an IN_PROGRESS transaction hasn't happened yet,
+					 * except if it is our own transaction, which we assume
+					 * has happened.
+					 *
+					 * This approach ensures that we behave sanely if we see
+					 * both the pre-image and post-image rows for a row being
+					 * updated by a concurrent transaction: we will sample the
+					 * pre-image but not the post-image.  We also get sane
+					 * results if the concurrent transaction never commits.
 					 */
 					if (TransactionIdIsCurrentTransactionId(HeapTupleHeaderGetUpdateXid(targtuple.t_data)))
 						deadrows += 1;
 					else
+					{
+						sample_it = true;
 						liverows += 1;
+					}
 					break;
 
 				default:
@@ -1183,19 +1209,22 @@ acquire_sample_rows(Relation onerel, int elevel,
 		qsort((void *) rows, numrows, sizeof(HeapTuple), compare_rows);
 
 	/*
-	 * Estimate total numbers of rows in relation.  For live rows, use
-	 * vac_estimate_reltuples; for dead rows, we have no source of old
-	 * information, so we have to assume the density is the same in unseen
-	 * pages as in the pages we scanned.
+	 * Estimate total numbers of live and dead rows in relation, extrapolating
+	 * on the assumption that the average tuple density in pages we didn't
+	 * scan is the same as in the pages we did scan.  Since what we scanned is
+	 * a random sample of the pages in the relation, this should be a good
+	 * assumption.
 	 */
-	*totalrows = vac_estimate_reltuples(onerel, true,
-										totalblocks,
-										bs.m,
-										liverows);
 	if (bs.m > 0)
+	{
+		*totalrows = floor((liverows / bs.m) * totalblocks + 0.5);
 		*totaldeadrows = floor((deadrows / bs.m) * totalblocks + 0.5);
+	}
 	else
+	{
+		*totalrows = 0.0;
 		*totaldeadrows = 0.0;
+	}
 
 	/*
 	 * Emit some interesting relation info

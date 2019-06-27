@@ -147,6 +147,7 @@ static bool has_indexed_join_quals(NestPath *joinpath);
 static double approx_tuple_count(PlannerInfo *root, JoinPath *path,
 				   List *quals);
 static double calc_joinrel_size_estimate(PlannerInfo *root,
+						   RelOptInfo *joinrel,
 						   RelOptInfo *outer_rel,
 						   RelOptInfo *inner_rel,
 						   double outer_rows,
@@ -2490,8 +2491,13 @@ final_cost_mergejoin(PlannerInfo *root, MergePath *path,
 		if (rescannedtuples < 0)
 			rescannedtuples = 0;
 	}
-	/* We'll inflate various costs this much to account for rescanning */
-	rescanratio = 1.0 + (rescannedtuples / inner_path_rows);
+
+	/*
+	 * We'll inflate various costs this much to account for rescanning.  Note
+	 * that this is to be multiplied by something involving inner_rows, or
+	 * another number related to the portion of the inner rel we'll scan.
+	 */
+	rescanratio = 1.0 + (rescannedtuples / inner_rows);
 
 	/*
 	 * Decide whether we want to materialize the inner input to shield it from
@@ -2518,7 +2524,7 @@ final_cost_mergejoin(PlannerInfo *root, MergePath *path,
 	 * of the generated Material node.
 	 */
 	mat_inner_cost = inner_run_cost +
-		cpu_operator_cost * inner_path_rows * rescanratio;
+		cpu_operator_cost * inner_rows * rescanratio;
 
 	/*
 	 * Prefer materializing if it looks cheaper, unless the user has asked to
@@ -3541,13 +3547,15 @@ compute_semi_anti_join_factors(PlannerInfo *root,
 	 */
 	if (jointype == JOIN_ANTI)
 	{
+		Relids		joinrelids = bms_union(outerrel->relids, innerrel->relids);
+
 		joinquals = NIL;
 		foreach(l, restrictlist)
 		{
 			RestrictInfo *rinfo = (RestrictInfo *) lfirst(l);
 
 			Assert(IsA(rinfo, RestrictInfo));
-			if (!rinfo->is_pushed_down)
+			if (!RINFO_IS_PUSHED_DOWN(rinfo, joinrelids))
 				joinquals = lappend(joinquals, rinfo);
 		}
 	}
@@ -3862,6 +3870,7 @@ set_joinrel_size_estimates(PlannerInfo *root, RelOptInfo *rel,
 						   List *restrictlist)
 {
 	rel->rows = calc_joinrel_size_estimate(root,
+										   rel,
 										   outer_rel,
 										   inner_rel,
 										   outer_rel->rows,
@@ -3904,6 +3913,7 @@ get_parameterized_joinrel_size(PlannerInfo *root, RelOptInfo *rel,
 	 * estimate for any pair with the same parameterization.
 	 */
 	nrows = calc_joinrel_size_estimate(root,
+									   rel,
 									   outer_path->parent,
 									   inner_path->parent,
 									   outer_path->rows,
@@ -3927,6 +3937,7 @@ get_parameterized_joinrel_size(PlannerInfo *root, RelOptInfo *rel,
  */
 static double
 calc_joinrel_size_estimate(PlannerInfo *root,
+						   RelOptInfo *joinrel,
 						   RelOptInfo *outer_rel,
 						   RelOptInfo *inner_rel,
 						   double outer_rows,
@@ -3980,7 +3991,7 @@ calc_joinrel_size_estimate(PlannerInfo *root,
 			RestrictInfo *rinfo = (RestrictInfo *) lfirst(l);
 
 			Assert(IsA(rinfo, RestrictInfo));
-			if (rinfo->is_pushed_down)
+			if (RINFO_IS_PUSHED_DOWN(rinfo, joinrel->relids))
 				pushedquals = lappend(pushedquals, rinfo);
 			else
 				joinquals = lappend(joinquals, rinfo);

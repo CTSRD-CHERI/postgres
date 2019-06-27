@@ -215,6 +215,9 @@ ginDeletePage(GinVacuumState *gvs, BlockNumber deleteBlkno, BlockNumber leftBlkn
 	page = BufferGetPage(dBuffer);
 	rightlink = GinPageGetOpaque(page)->rightlink;
 
+	/* For deleted page remember last xid which could knew its address */
+	GinPageSetDeleteXid(page, ReadNewTransactionId());
+
 	page = BufferGetPage(lBuffer);
 	GinPageGetOpaque(page)->rightlink = rightlink;
 
@@ -262,6 +265,7 @@ ginDeletePage(GinVacuumState *gvs, BlockNumber deleteBlkno, BlockNumber leftBlkn
 
 		data.parentOffset = myoff;
 		data.rightLink = GinPageGetOpaque(page)->rightlink;
+		data.deleteXid = GinPageGetDeleteXid(page);
 
 		XLogRegisterData((char *) &data, sizeof(ginxlogDeletePage));
 
@@ -543,7 +547,7 @@ ginbulkdelete(IndexVacuumInfo *info, IndexBulkDeleteResult *stats,
 		 * and cleanup any pending inserts
 		 */
 		ginInsertCleanup(&gvs.ginstate, !IsAutoVacuumWorkerProcess(),
-						 false, stats);
+						 false, true, stats);
 	}
 
 	/* we'll re-count the tuples each time */
@@ -656,7 +660,7 @@ ginvacuumcleanup(IndexVacuumInfo *info, IndexBulkDeleteResult *stats)
 		if (IsAutoVacuumWorkerProcess())
 		{
 			initGinState(&ginstate, index);
-			ginInsertCleanup(&ginstate, false, true, stats);
+			ginInsertCleanup(&ginstate, false, true, true, stats);
 		}
 		return stats;
 	}
@@ -670,7 +674,7 @@ ginvacuumcleanup(IndexVacuumInfo *info, IndexBulkDeleteResult *stats)
 		stats = (IndexBulkDeleteResult *) palloc0(sizeof(IndexBulkDeleteResult));
 		initGinState(&ginstate, index);
 		ginInsertCleanup(&ginstate, !IsAutoVacuumWorkerProcess(),
-						 false, stats);
+						 false, true, stats);
 	}
 
 	memset(&idxStat, 0, sizeof(idxStat));
@@ -708,7 +712,7 @@ ginvacuumcleanup(IndexVacuumInfo *info, IndexBulkDeleteResult *stats)
 		LockBuffer(buffer, GIN_SHARE);
 		page = (Page) BufferGetPage(buffer);
 
-		if (PageIsNew(page) || GinPageIsDeleted(page))
+		if (GinPageIsRecyclable(page))
 		{
 			Assert(blkno != GIN_ROOT_BLKNO);
 			RecordFreeIndexPage(index, blkno);
