@@ -76,13 +76,8 @@ extern bool raw_expression_tree_walker(Node *node, bool (*walker) (Node *, void 
 typedef bool (*node_walker) (Node *, void *);
 typedef Node * (*node_mutator) (Node *, void *);
 
-#define DECLARE_NODE_CALLBACK_FUNC(retty, name, argtype) retty name##_untyped(Node *node, void *_voidptr_arg); static inline retty name(Node *node, argtype context) { return name##_untyped(node, context); }
-#define DECLARE_NODE_WALKER(name, argtype) DECLARE_NODE_CALLBACK_FUNC(bool, name, argtype)
-#define DECLARE_NODE_MUTATOR(name, argtype) DECLARE_NODE_CALLBACK_FUNC(Node *, name, argtype)
-#define DECLARE_NODE_CALLBACK_FUNC(retty, name, argtype) retty name##_untyped(Node *node, void *_voidptr_arg); static inline retty name(Node *node, argtype context) { return name##_untyped(node, context); }
-#define NODE_CALLBACK_FUNC(name, arg) name##_untyped(Node *node, void *_voidptr_arg) { arg = _voidptr_arg;
-
 struct PlanState;
+typedef bool (*planstate_walker) (struct PlanState *, void *);
 extern bool planstate_tree_walker(struct PlanState *planstate, bool (*walker) (struct PlanState *, void *),
 											  void *context);
 

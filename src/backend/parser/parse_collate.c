@@ -72,8 +72,9 @@ typedef struct
 	int			location2;		/* location of expr that set collation2 */
 } assign_collations_context;
 
-static DECLARE_NODE_WALKER(assign_query_collations_walker, ParseState*)
-static DECLARE_NODE_WALKER(assign_collations_walker, assign_collations_context* );
+static bool assign_query_collations_walker(Node *node, ParseState *pstate);
+static bool assign_collations_walker(Node *node,
+						 assign_collations_context *context);
 static void merge_collation_state(Oid collation,
 					  CollateStrength strength,
 					  int location,
@@ -106,7 +107,7 @@ assign_query_collations(ParseState *pstate, Query *query)
 	 * to them would not get created with the right collation).
 	 */
 	(void) query_tree_walker(query,
-							 assign_query_collations_walker_untyped,
+							 (node_walker)assign_query_collations_walker,
 							 (void *) pstate,
 							 QTW_IGNORE_RANGE_TABLE |
 							 QTW_IGNORE_CTE_SUBQUERIES);
@@ -122,7 +123,8 @@ assign_query_collations(ParseState *pstate, Query *query)
  * have different collations.
  */
 static bool
-NODE_CALLBACK_FUNC(assign_query_collations_walker, ParseState *pstate)
+assign_query_collations_walker(Node *node, ParseState *pstate)
+{
 	/* Need do nothing for empty subexpressions */
 	if (node == NULL)
 		return false;
@@ -250,7 +252,8 @@ select_common_collation(ParseState *pstate, List *exprs, bool none_ok)
  * error if there are conflicting explicit collations for different members.
  */
 static bool
-NODE_CALLBACK_FUNC(assign_collations_walker, assign_collations_context *context)
+assign_collations_walker(Node *node, assign_collations_context *context)
+{
 	assign_collations_context loccontext;
 	Oid			collation;
 	CollateStrength strength;
@@ -291,7 +294,7 @@ NODE_CALLBACK_FUNC(assign_collations_walker, assign_collations_context *context)
 				CollateExpr *expr = (CollateExpr *) node;
 
 				(void) expression_tree_walker(node,
-											  assign_collations_walker_untyped,
+											  (node_walker)assign_collations_walker,
 											  (void *) &loccontext);
 
 				collation = expr->collOid;
@@ -313,7 +316,7 @@ NODE_CALLBACK_FUNC(assign_collations_walker, assign_collations_context *context)
 
 				/* ... but first, recurse */
 				(void) expression_tree_walker(node,
-											  assign_collations_walker_untyped,
+											  (node_walker)assign_collations_walker,
 											  (void *) &loccontext);
 
 				if (OidIsValid(expr->resultcollid))
@@ -399,7 +402,7 @@ NODE_CALLBACK_FUNC(assign_collations_walker, assign_collations_context *context)
 
 				/* ... but first, recurse */
 				(void) expression_tree_walker(node,
-											  assign_collations_walker_untyped,
+											  (node_walker)assign_collations_walker,
 											  (void *) &loccontext);
 
 				if (OidIsValid(typcollation))
@@ -440,7 +443,7 @@ NODE_CALLBACK_FUNC(assign_collations_walker, assign_collations_context *context)
 			break;
 		case T_TargetEntry:
 			(void) expression_tree_walker(node,
-										  assign_collations_walker_untyped,
+										  (node_walker)assign_collations_walker,
 										  (void *) &loccontext);
 
 			/*
@@ -483,7 +486,7 @@ NODE_CALLBACK_FUNC(assign_collations_walker, assign_collations_context *context)
 		case T_OnConflictExpr:
 		case T_SortGroupClause:
 			(void) expression_tree_walker(node,
-										  assign_collations_walker_untyped,
+										  (node_walker)assign_collations_walker,
 										  (void *) &loccontext);
 
 			/*
@@ -524,7 +527,7 @@ NODE_CALLBACK_FUNC(assign_collations_walker, assign_collations_context *context)
 			break;
 		case T_List:
 			(void) expression_tree_walker(node,
-										  assign_collations_walker_untyped,
+										  (node_walker)assign_collations_walker,
 										  (void *) &loccontext);
 
 			/*
@@ -674,7 +677,7 @@ NODE_CALLBACK_FUNC(assign_collations_walker, assign_collations_context *context)
 						 * equally to loccontext.
 						 */
 						(void) expression_tree_walker(node,
-													assign_collations_walker_untyped,
+													(node_walker)assign_collations_walker,
 													  (void *) &loccontext);
 						break;
 				}

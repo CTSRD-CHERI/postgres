@@ -139,7 +139,7 @@ static MergeScanSelCache *cached_scansel(PlannerInfo *root,
 			   PathKey *pathkey);
 static void cost_rescan(PlannerInfo *root, Path *path,
 			Cost *rescan_startup_cost, Cost *rescan_total_cost);
-static DECLARE_NODE_WALKER(cost_qual_eval_walker, cost_qual_eval_context *)
+static bool cost_qual_eval_walker(Node *node, cost_qual_eval_context *context);
 static void get_restriction_qual_cost(PlannerInfo *root, RelOptInfo *baserel,
 						  ParamPathInfo *param_info,
 						  QualCost *qpqual_cost);
@@ -3255,7 +3255,8 @@ cost_qual_eval_node(QualCost *cost, Node *qual, PlannerInfo *root)
 }
 
 static bool
-NODE_CALLBACK_FUNC(cost_qual_eval_walker, cost_qual_eval_context *context)
+cost_qual_eval_walker(Node *node, cost_qual_eval_context *context)
+{
 	if (node == NULL)
 		return false;
 
@@ -3464,7 +3465,7 @@ NODE_CALLBACK_FUNC(cost_qual_eval_walker, cost_qual_eval_context *context)
 	}
 
 	/* recurse into children */
-	return expression_tree_walker(node, cost_qual_eval_walker_untyped,
+	return expression_tree_walker(node, (node_walker)cost_qual_eval_walker,
 								  (void *) context);
 }
 

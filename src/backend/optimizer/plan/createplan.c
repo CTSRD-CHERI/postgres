@@ -146,7 +146,7 @@ static NestLoop *create_nestloop_plan(PlannerInfo *root, NestPath *best_path);
 static MergeJoin *create_mergejoin_plan(PlannerInfo *root, MergePath *best_path);
 static HashJoin *create_hashjoin_plan(PlannerInfo *root, HashPath *best_path);
 static Node *replace_nestloop_params(PlannerInfo *root, Node *expr);
-static DECLARE_NODE_MUTATOR(replace_nestloop_params_mutator, PlannerInfo *)
+static Node *replace_nestloop_params_mutator(Node *node, PlannerInfo *root);
 static List *fix_indexqual_references(PlannerInfo *root, IndexPath *index_path);
 static List *fix_indexorderby_references(PlannerInfo *root, IndexPath *index_path);
 static Node *fix_indexqual_operand(Node *node, IndexOptInfo *index, int indexcol);
@@ -3988,7 +3988,8 @@ replace_nestloop_params(PlannerInfo *root, Node *expr)
 }
 
 static Node *
-NODE_CALLBACK_FUNC(replace_nestloop_params_mutator, PlannerInfo *root)
+replace_nestloop_params_mutator(Node *node, PlannerInfo *root)
+{
 	if (node == NULL)
 		return NULL;
 	if (IsA(node, Var))
@@ -4046,7 +4047,7 @@ NODE_CALLBACK_FUNC(replace_nestloop_params_mutator, PlannerInfo *root)
 		return (Node *) replace_nestloop_param_placeholdervar(root, phv);
 	}
 	return expression_tree_mutator(node,
-								   replace_nestloop_params_mutator_untyped,
+								   (node_mutator)replace_nestloop_params_mutator,
 								   (void *) root);
 }
 

@@ -83,7 +83,7 @@ typedef struct
 
 static void add_rtes_to_flat_rtable(PlannerInfo *root, bool recursing);
 static void flatten_unplanned_rtes(PlannerGlobal *glob, RangeTblEntry *rte);
-static DECLARE_NODE_WALKER(flatten_rtes_walker, PlannerGlobal *)
+static bool flatten_rtes_walker(Node *node, PlannerGlobal *glob);
 static void add_rte_to_flat_rtable(PlannerGlobal *glob, RangeTblEntry *rte);
 static Plan *set_plan_refs(PlannerInfo *root, Plan *plan, int rtoffset);
 static Plan *set_indexonlyscan_references(PlannerInfo *root,
@@ -100,8 +100,8 @@ static void set_customscan_references(PlannerInfo *root,
 						  CustomScan *cscan,
 						  int rtoffset);
 static Node *fix_scan_expr(PlannerInfo *root, Node *node, int rtoffset);
-static DECLARE_NODE_MUTATOR(fix_scan_expr_mutator, fix_scan_expr_context *)
-static DECLARE_NODE_WALKER(fix_scan_expr_walker, fix_scan_expr_context *)
+static Node *fix_scan_expr_mutator(Node *node, fix_scan_expr_context *context);
+static bool fix_scan_expr_walker(Node *node, fix_scan_expr_context *context);
 static void set_join_references(PlannerInfo *root, Join *join, int rtoffset);
 static void set_upper_references(PlannerInfo *root, Plan *plan, int rtoffset);
 static Node *convert_combining_aggrefs(Node *node, void *context);
@@ -123,19 +123,22 @@ static List *fix_join_expr(PlannerInfo *root,
 			  indexed_tlist *outer_itlist,
 			  indexed_tlist *inner_itlist,
 			  Index acceptable_rel, int rtoffset);
-static DECLARE_NODE_MUTATOR(fix_join_expr_mutator, fix_join_expr_context *)
+static Node *fix_join_expr_mutator(Node *node,
+					  fix_join_expr_context *context);
 static Node *fix_upper_expr(PlannerInfo *root,
 			   Node *node,
 			   indexed_tlist *subplan_itlist,
 			   Index newvarno,
 			   int rtoffset);
-static DECLARE_NODE_MUTATOR(fix_upper_expr_mutator, fix_upper_expr_context *);
+static Node *fix_upper_expr_mutator(Node *node,
+					   fix_upper_expr_context *context);
 static List *set_returning_clause_references(PlannerInfo *root,
 								List *rlist,
 								Plan *topplan,
 								Index resultRelation,
 								int rtoffset);
-static DECLARE_NODE_WALKER(extract_query_dependencies_walker, PlannerInfo *)
+static bool extract_query_dependencies_walker(Node *node,
+								  PlannerInfo *context);
 
 /*****************************************************************************
  *
@@ -337,13 +340,14 @@ flatten_unplanned_rtes(PlannerGlobal *glob, RangeTblEntry *rte)
 {
 	/* Use query_tree_walker to find all RTEs in the parse tree */
 	(void) query_tree_walker(rte->subquery,
-							 flatten_rtes_walker_untyped,
+							 (node_walker)flatten_rtes_walker,
 							 (void *) glob,
 							 QTW_EXAMINE_RTES);
 }
 
 static bool
-NODE_CALLBACK_FUNC(flatten_rtes_walker, PlannerGlobal *glob)
+flatten_rtes_walker(Node *node, PlannerGlobal *glob)
+{
 	if (node == NULL)
 		return false;
 	if (IsA(node, RangeTblEntry))
@@ -359,11 +363,11 @@ NODE_CALLBACK_FUNC(flatten_rtes_walker, PlannerGlobal *glob)
 	{
 		/* Recurse into subselects */
 		return query_tree_walker((Query *) node,
-								 flatten_rtes_walker_untyped,
+								 (node_walker)flatten_rtes_walker,
 								 (void *) glob,
 								 QTW_EXAMINE_RTES);
 	}
-	return expression_tree_walker(node, flatten_rtes_walker_untyped,
+	return expression_tree_walker(node, (node_walker)flatten_rtes_walker,
 								  (void *) glob);
 }
 
@@ -1446,7 +1450,8 @@ fix_scan_expr(PlannerInfo *root, Node *node, int rtoffset)
 }
 
 static Node *
-NODE_CALLBACK_FUNC(fix_scan_expr_mutator, fix_scan_expr_context *context)
+fix_scan_expr_mutator(Node *node, fix_scan_expr_context *context)
+{
 	if (node == NULL)
 		return NULL;
 	if (IsA(node, Var))
@@ -1509,17 +1514,18 @@ NODE_CALLBACK_FUNC(fix_scan_expr_mutator, fix_scan_expr_context *context)
 		return fix_scan_expr_mutator((Node *) phv->phexpr, context);
 	}
 	fix_expr_common(context->root, node);
-	return expression_tree_mutator(node, fix_scan_expr_mutator_untyped,
+	return expression_tree_mutator(node, (node_mutator)fix_scan_expr_mutator,
 								   (void *) context);
 }
 
 static bool
-NODE_CALLBACK_FUNC(fix_scan_expr_walker, fix_scan_expr_context *context)
+fix_scan_expr_walker(Node *node, fix_scan_expr_context *context)
+{
 	if (node == NULL)
 		return false;
 	Assert(!IsA(node, PlaceHolderVar));
 	fix_expr_common(context->root, node);
-	return expression_tree_walker(node, fix_scan_expr_walker_untyped,
+	return expression_tree_walker(node, (node_walker)fix_scan_expr_walker,
 								  (void *) context);
 }
 
@@ -2134,7 +2140,8 @@ fix_join_expr(PlannerInfo *root,
 }
 
 static Node *
-NODE_CALLBACK_FUNC(fix_join_expr_mutator, fix_join_expr_context *context)
+fix_join_expr_mutator(Node *node, fix_join_expr_context *context)
+{
 	Var		   *newvar;
 
 	if (node == NULL)
@@ -2225,7 +2232,7 @@ NODE_CALLBACK_FUNC(fix_join_expr_mutator, fix_join_expr_context *context)
 		return fix_param_node(context->root, (Param *) node);
 	fix_expr_common(context->root, node);
 	return expression_tree_mutator(node,
-								   fix_join_expr_mutator_untyped,
+								   (node_mutator)fix_join_expr_mutator,
 								   (void *) context);
 }
 
@@ -2276,7 +2283,8 @@ fix_upper_expr(PlannerInfo *root,
 }
 
 static Node *
-NODE_CALLBACK_FUNC(fix_upper_expr_mutator, fix_upper_expr_context *context)
+fix_upper_expr_mutator(Node *node, fix_upper_expr_context *context)
+{
 	Var		   *newvar;
 
 	if (node == NULL)
@@ -2345,7 +2353,7 @@ NODE_CALLBACK_FUNC(fix_upper_expr_mutator, fix_upper_expr_context *context)
 	}
 	fix_expr_common(context->root, node);
 	return expression_tree_mutator(node,
-								   fix_upper_expr_mutator_untyped,
+								   (node_mutator)fix_upper_expr_mutator,
 								   (void *) context);
 }
 
@@ -2493,7 +2501,8 @@ extract_query_dependencies(Node *query,
 }
 
 static bool
-NODE_CALLBACK_FUNC(extract_query_dependencies_walker, PlannerInfo *context)
+extract_query_dependencies_walker(Node *node, PlannerInfo *context)
+{
 	if (node == NULL)
 		return false;
 	Assert(!IsA(node, PlaceHolderVar));
@@ -2530,9 +2539,9 @@ NODE_CALLBACK_FUNC(extract_query_dependencies_walker, PlannerInfo *context)
 		}
 
 		/* And recurse into the query's subexpressions */
-		return query_tree_walker(query, extract_query_dependencies_walker_untyped,
+		return query_tree_walker(query, (node_walker)extract_query_dependencies_walker,
 								 (void *) context, 0);
 	}
-	return expression_tree_walker(node, extract_query_dependencies_walker_untyped,
+	return expression_tree_walker(node, (node_walker)extract_query_dependencies_walker,
 								  (void *) context);
 }

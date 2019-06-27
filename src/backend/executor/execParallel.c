@@ -96,12 +96,14 @@ typedef struct ExecParallelInitializeDSMContext
 
 /* Helper functions that run in the parallel leader. */
 static char *ExecSerializePlan(Plan *plan, EState *estate);
-static bool ExecParallelEstimate(PlanState *node, void* arg);
-static bool ExecParallelInitializeDSM(PlanState *node, /*ExecParallelInitializeDSMContext*/void *d);
+static bool ExecParallelEstimate(PlanState *node,
+					 ExecParallelEstimateContext *e);
+static bool ExecParallelInitializeDSM(PlanState *node,
+						  ExecParallelInitializeDSMContext *d);
 static shm_mq_handle **ExecParallelSetupTupleQueues(ParallelContext *pcxt,
 							 bool reinitialize);
 static bool ExecParallelRetrieveInstrumentation(PlanState *planstate,
-							 /*SharedExecutorInstrumentation*/void *instrumentation);
+							 SharedExecutorInstrumentation *instrumentation);
 
 /* Helper function that runs in the parallel worker. */
 static DestReceiver *ExecParallelGetReceiver(dsm_segment *seg, shm_toc *toc);
@@ -173,9 +175,8 @@ ExecSerializePlan(Plan *plan, EState *estate)
  * we know how many Instrumentation structures we need.
  */
 static bool
-ExecParallelEstimate(PlanState *planstate, void *arg)
+ExecParallelEstimate(PlanState *planstate, ExecParallelEstimateContext *e)
 {
-	ExecParallelEstimateContext *e = arg;
 	if (planstate == NULL)
 		return false;
 
@@ -204,7 +205,7 @@ ExecParallelEstimate(PlanState *planstate, void *arg)
 		}
 	}
 
-	return planstate_tree_walker(planstate, ExecParallelEstimate, e);
+	return planstate_tree_walker(planstate, (planstate_walker)ExecParallelEstimate, e);
 }
 
 /*
@@ -212,9 +213,9 @@ ExecParallelEstimate(PlanState *planstate, void *arg)
  * parallel execution.
  */
 static bool
-ExecParallelInitializeDSM(PlanState *planstate, void* arg)
+ExecParallelInitializeDSM(PlanState *planstate,
+						  ExecParallelInitializeDSMContext *d)
 {
-	ExecParallelInitializeDSMContext *d = arg;
 	if (planstate == NULL)
 		return false;
 
@@ -256,7 +257,7 @@ ExecParallelInitializeDSM(PlanState *planstate, void* arg)
 		}
 	}
 
-	return planstate_tree_walker(planstate, ExecParallelInitializeDSM, d);
+	return planstate_tree_walker(planstate, (planstate_walker)ExecParallelInitializeDSM, d);
 }
 
 /*
@@ -490,9 +491,9 @@ ExecInitParallelPlan(PlanState *planstate, EState *estate, int nworkers)
  * dynamic shared memory.
  */
 static bool
-ExecParallelRetrieveInstrumentation(PlanState *planstate, void* _arg)
+ExecParallelRetrieveInstrumentation(PlanState *planstate,
+							  SharedExecutorInstrumentation *instrumentation)
 {
-	SharedExecutorInstrumentation *instrumentation = _arg;
 	Instrumentation *instrument;
 	int			i;
 	int			n;
@@ -529,7 +530,7 @@ ExecParallelRetrieveInstrumentation(PlanState *planstate, void* _arg)
 	planstate->worker_instrument->num_workers = instrumentation->num_workers;
 	memcpy(&planstate->worker_instrument->instrument, instrument, ibytes);
 
-	return planstate_tree_walker(planstate, ExecParallelRetrieveInstrumentation,
+	return planstate_tree_walker(planstate, (planstate_walker)ExecParallelRetrieveInstrumentation,
 								 instrumentation);
 }
 
@@ -633,9 +634,9 @@ ExecParallelGetQueryDesc(shm_toc *toc, DestReceiver *receiver,
  * dynamic shared memory, so that the parallel leader can retrieve it.
  */
 static bool
-ExecParallelReportInstrumentation(PlanState *planstate, void* _arg)
+ExecParallelReportInstrumentation(PlanState *planstate,
+							  SharedExecutorInstrumentation *instrumentation)
 {
-	SharedExecutorInstrumentation *instrumentation = _arg;
 	int			i;
 	int			plan_node_id = planstate->plan->plan_node_id;
 	Instrumentation *instrument;
@@ -664,7 +665,7 @@ ExecParallelReportInstrumentation(PlanState *planstate, void* _arg)
 	Assert(ParallelWorkerNumber < instrumentation->num_workers);
 	InstrAggNode(&instrument[ParallelWorkerNumber], planstate->instrument);
 
-	return planstate_tree_walker(planstate, ExecParallelReportInstrumentation,
+	return planstate_tree_walker(planstate, (planstate_walker)ExecParallelReportInstrumentation,
 								 instrumentation);
 }
 
@@ -674,9 +675,8 @@ ExecParallelReportInstrumentation(PlanState *planstate, void* _arg)
  * is allocated and initialized by executor; that is, after ExecutorStart().
  */
 static bool
-ExecParallelInitializeWorker(PlanState *planstate, void* _arg)
+ExecParallelInitializeWorker(PlanState *planstate, shm_toc *toc)
 {
-	shm_toc *toc = _arg;
 	if (planstate == NULL)
 		return false;
 
@@ -701,7 +701,7 @@ ExecParallelInitializeWorker(PlanState *planstate, void* _arg)
 		}
 	}
 
-	return planstate_tree_walker(planstate, ExecParallelInitializeWorker, toc);
+	return planstate_tree_walker(planstate, (planstate_walker)ExecParallelInitializeWorker, toc);
 }
 
 /*

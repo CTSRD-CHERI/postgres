@@ -488,8 +488,7 @@ static void finalize_aggregates(AggState *aggstate,
 					int currentSet);
 static TupleTableSlot *project_aggregates(AggState *aggstate);
 static Bitmapset *find_unaggregated_cols(AggState *aggstate);
-
-static DECLARE_NODE_WALKER(find_unaggregated_cols_walker, Bitmapset **)
+static bool find_unaggregated_cols_walker(Node *node, Bitmapset **colnos);
 static void build_hash_table(AggState *aggstate);
 static AggHashEntry lookup_hash_entry(AggState *aggstate,
 				  TupleTableSlot *inputslot);
@@ -1687,7 +1686,8 @@ find_unaggregated_cols(AggState *aggstate)
 }
 
 static bool
-NODE_CALLBACK_FUNC(find_unaggregated_cols_walker, Bitmapset **colnos)
+find_unaggregated_cols_walker(Node *node, Bitmapset **colnos)
+{
 	if (node == NULL)
 		return false;
 	if (IsA(node, Var))
@@ -1705,7 +1705,7 @@ NODE_CALLBACK_FUNC(find_unaggregated_cols_walker, Bitmapset **colnos)
 		/* do not descend into aggregate exprs */
 		return false;
 	}
-	return expression_tree_walker(node, find_unaggregated_cols_walker_untyped,
+	return expression_tree_walker(node, (node_walker)find_unaggregated_cols_walker,
 								  (void *) colnos);
 }
 

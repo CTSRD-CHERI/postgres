@@ -56,16 +56,19 @@ static int check_agg_arguments(ParseState *pstate,
 					List *directargs,
 					List *args,
 					Expr *filter);
-static DECLARE_NODE_WALKER(check_agg_arguments_walker, check_agg_arguments_context *)
+static bool check_agg_arguments_walker(Node *node,
+						   check_agg_arguments_context *context);
 static void check_ungrouped_columns(Node *node, ParseState *pstate, Query *qry,
 						List *groupClauses, List *groupClauseVars,
 						bool have_non_var_grouping,
 						List **func_grouped_rels);
-static DECLARE_NODE_WALKER(check_ungrouped_columns_walker, check_ungrouped_columns_context *)
+static bool check_ungrouped_columns_walker(Node *node,
+							   check_ungrouped_columns_context *context);
 static void finalize_grouping_exprs(Node *node, ParseState *pstate, Query *qry,
 						List *groupClauses, PlannerInfo *root,
 						bool have_non_var_grouping);
-static DECLARE_NODE_WALKER(finalize_grouping_exprs_walker, check_ungrouped_columns_context *)
+static bool finalize_grouping_exprs_walker(Node *node,
+							   check_ungrouped_columns_context *context);
 static void check_agglevels_and_constraints(ParseState *pstate, Node *expr);
 static List *expand_groupingset_node(GroupingSet *gs);
 static Node *make_agg_arg(Oid argtype, Oid argcollation);
@@ -571,11 +574,11 @@ check_agg_arguments(ParseState *pstate,
 	context.sublevels_up = 0;
 
 	(void) expression_tree_walker((Node *) args,
-								  check_agg_arguments_walker_untyped,
+								  (node_walker)check_agg_arguments_walker,
 								  (void *) &context);
 
 	(void) expression_tree_walker((Node *) filter,
-								  check_agg_arguments_walker_untyped,
+								  (node_walker)check_agg_arguments_walker,
 								  (void *) &context);
 
 	/*
@@ -624,7 +627,7 @@ check_agg_arguments(ParseState *pstate,
 		context.min_varlevel = -1;
 		context.min_agglevel = -1;
 		(void) expression_tree_walker((Node *) directargs,
-									  check_agg_arguments_walker_untyped,
+									  (node_walker)check_agg_arguments_walker,
 									  (void *) &context);
 		if (context.min_varlevel >= 0 && context.min_varlevel < agglevel)
 			ereport(ERROR,
@@ -645,7 +648,9 @@ check_agg_arguments(ParseState *pstate,
 }
 
 static bool
-NODE_CALLBACK_FUNC(check_agg_arguments_walker, check_agg_arguments_context *context)
+check_agg_arguments_walker(Node *node,
+						   check_agg_arguments_context *context)
+{
 	if (node == NULL)
 		return false;
 	if (IsA(node, Var))
@@ -708,7 +713,7 @@ NODE_CALLBACK_FUNC(check_agg_arguments_walker, check_agg_arguments_context *cont
 
 		context->sublevels_up++;
 		result = query_tree_walker((Query *) node,
-								   check_agg_arguments_walker_untyped,
+								   (node_walker)check_agg_arguments_walker,
 								   (void *) context,
 								   0);
 		context->sublevels_up--;
@@ -716,7 +721,7 @@ NODE_CALLBACK_FUNC(check_agg_arguments_walker, check_agg_arguments_context *cont
 	}
 
 	return expression_tree_walker(node,
-								  check_agg_arguments_walker_untyped,
+								  (node_walker)check_agg_arguments_walker,
 								  (void *) context);
 }
 
@@ -1187,7 +1192,9 @@ check_ungrouped_columns(Node *node, ParseState *pstate, Query *qry,
 }
 
 static bool
-NODE_CALLBACK_FUNC(check_ungrouped_columns_walker, check_ungrouped_columns_context *context)
+check_ungrouped_columns_walker(Node *node,
+							   check_ungrouped_columns_context *context)
+{
 	ListCell   *gl;
 
 	if (node == NULL)
@@ -1351,13 +1358,13 @@ NODE_CALLBACK_FUNC(check_ungrouped_columns_walker, check_ungrouped_columns_conte
 
 		context->sublevels_up++;
 		result = query_tree_walker((Query *) node,
-								   check_ungrouped_columns_walker_untyped,
+								   (node_walker)check_ungrouped_columns_walker,
 								   (void *) context,
 								   0);
 		context->sublevels_up--;
 		return result;
 	}
-	return expression_tree_walker(node, check_ungrouped_columns_walker_untyped,
+	return expression_tree_walker(node, (node_walker)check_ungrouped_columns_walker,
 								  (void *) context);
 }
 
@@ -1392,7 +1399,9 @@ finalize_grouping_exprs(Node *node, ParseState *pstate, Query *qry,
 }
 
 static bool
-NODE_CALLBACK_FUNC(finalize_grouping_exprs_walker, check_ungrouped_columns_context *context)
+finalize_grouping_exprs_walker(Node *node,
+							   check_ungrouped_columns_context *context)
+{
 	ListCell   *gl;
 
 	if (node == NULL)
@@ -1522,13 +1531,13 @@ NODE_CALLBACK_FUNC(finalize_grouping_exprs_walker, check_ungrouped_columns_conte
 
 		context->sublevels_up++;
 		result = query_tree_walker((Query *) node,
-								   finalize_grouping_exprs_walker_untyped,
+								   (node_walker)finalize_grouping_exprs_walker,
 								   (void *) context,
 								   0);
 		context->sublevels_up--;
 		return result;
 	}
-	return expression_tree_walker(node, finalize_grouping_exprs_walker_untyped,
+	return expression_tree_walker(node, (node_walker)finalize_grouping_exprs_walker,
 								  (void *) context);
 }
 

@@ -106,7 +106,8 @@ static void make_inh_translation_list(Relation oldrelation,
 						  List **translated_vars);
 static Bitmapset *translate_col_privs(const Bitmapset *parent_privs,
 					List *translated_vars);
-static DECLARE_NODE_MUTATOR(adjust_appendrel_attrs_mutator, adjust_appendrel_attrs_context *)
+static Node *adjust_appendrel_attrs_mutator(Node *node,
+							   adjust_appendrel_attrs_context *context);
 static Relids adjust_relid_set(Relids relids, Index oldrelid, Index newrelid);
 static List *adjust_inherited_tlist(List *tlist,
 					   AppendRelInfo *context);
@@ -1763,7 +1764,7 @@ adjust_appendrel_attrs(PlannerInfo *root, Node *node, AppendRelInfo *appinfo)
 		Query	   *newnode;
 
 		newnode = query_tree_mutator((Query *) node,
-									 adjust_appendrel_attrs_mutator_untyped,
+									 (node_mutator)adjust_appendrel_attrs_mutator,
 									 (void *) &context,
 									 QTW_IGNORE_RC_SUBQUERIES);
 		if (newnode->resultRelation == appinfo->parent_relid)
@@ -1784,7 +1785,9 @@ adjust_appendrel_attrs(PlannerInfo *root, Node *node, AppendRelInfo *appinfo)
 }
 
 static Node *
-NODE_CALLBACK_FUNC(adjust_appendrel_attrs_mutator, adjust_appendrel_attrs_context *context)
+adjust_appendrel_attrs_mutator(Node *node,
+							   adjust_appendrel_attrs_context *context)
+{
 	AppendRelInfo *appinfo = context->appinfo;
 
 	if (node == NULL)
@@ -1902,7 +1905,7 @@ NODE_CALLBACK_FUNC(adjust_appendrel_attrs_mutator, adjust_appendrel_attrs_contex
 		JoinExpr   *j;
 
 		j = (JoinExpr *) expression_tree_mutator(node,
-											  adjust_appendrel_attrs_mutator_untyped,
+											  (node_mutator)adjust_appendrel_attrs_mutator,
 												 (void *) context);
 		/* now fix JoinExpr's rtindex (probably never happens) */
 		if (context->sublevels_up == 0 &&
@@ -1916,7 +1919,7 @@ NODE_CALLBACK_FUNC(adjust_appendrel_attrs_mutator, adjust_appendrel_attrs_contex
 		PlaceHolderVar *phv;
 
 		phv = (PlaceHolderVar *) expression_tree_mutator(node,
-											  adjust_appendrel_attrs_mutator_untyped,
+											  (node_mutator)adjust_appendrel_attrs_mutator,
 														 (void *) context);
 		/* now fix PlaceHolderVar's relid sets */
 		if (phv->phlevelsup == context->sublevels_up)
@@ -2008,13 +2011,13 @@ NODE_CALLBACK_FUNC(adjust_appendrel_attrs_mutator, adjust_appendrel_attrs_contex
 
 		context->sublevels_up++;
 		newnode = query_tree_mutator((Query *) node,
-									 adjust_appendrel_attrs_mutator_untyped,
+									 (node_mutator)adjust_appendrel_attrs_mutator,
 									 (void *) context, 0);
 		context->sublevels_up--;
 		return (Node *) newnode;
 	}
 
-	return expression_tree_mutator(node, adjust_appendrel_attrs_mutator_untyped,
+	return expression_tree_mutator(node, (node_mutator)adjust_appendrel_attrs_mutator,
 								   (void *) context);
 }
 

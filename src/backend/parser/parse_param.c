@@ -56,7 +56,7 @@ static Node *variable_paramref_hook(ParseState *pstate, ParamRef *pref);
 static Node *variable_coerce_param_hook(ParseState *pstate, Param *param,
 						   Oid targetTypeId, int32 targetTypeMod,
 						   int location);
-static DECLARE_NODE_WALKER(check_parameter_resolution_walker, ParseState *)
+static bool check_parameter_resolution_walker(Node *node, ParseState *pstate);
 static bool query_contains_extern_params_walker(Node *node, void *context);
 
 
@@ -267,7 +267,7 @@ check_variable_parameters(ParseState *pstate, Query *query)
 	/* If numParams is zero then no Params were generated, so no work */
 	if (*parstate->numParams > 0)
 		(void) query_tree_walker(query,
-								 check_parameter_resolution_walker_untyped,
+								 (node_walker)check_parameter_resolution_walker,
 								 (void *) pstate, 0);
 }
 
@@ -278,7 +278,8 @@ check_variable_parameters(ParseState *pstate, Query *query)
  * and yet other instances seen later might have gotten coerced.
  */
 static bool
-NODE_CALLBACK_FUNC(check_parameter_resolution_walker, ParseState *pstate)
+check_parameter_resolution_walker(Node *node, ParseState *pstate)
+{
 	if (node == NULL)
 		return false;
 	if (IsA(node, Param))
@@ -310,10 +311,10 @@ NODE_CALLBACK_FUNC(check_parameter_resolution_walker, ParseState *pstate)
 	{
 		/* Recurse into RTE subquery or not-yet-planned sublink subquery */
 		return query_tree_walker((Query *) node,
-								 check_parameter_resolution_walker_untyped,
+								 (node_walker)check_parameter_resolution_walker,
 								 (void *) pstate, 0);
 	}
-	return expression_tree_walker(node, check_parameter_resolution_walker_untyped,
+	return expression_tree_walker(node, (node_walker)check_parameter_resolution_walker,
 								  (void *) pstate);
 }
 

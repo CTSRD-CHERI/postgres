@@ -182,7 +182,8 @@ static void deleteOneObject(const ObjectAddress *object,
 static void doDeletion(const ObjectAddress *object, int flags);
 static void AcquireDeletionLock(const ObjectAddress *object, int flags);
 static void ReleaseDeletionLock(const ObjectAddress *object);
-static DECLARE_NODE_WALKER(find_expr_references_walker, find_expr_references_context *)
+static bool find_expr_references_walker(Node *node,
+							find_expr_references_context *context);
 static void eliminate_duplicate_dependencies(ObjectAddresses *addrs);
 static int	object_address_comparator(const void *a, const void *b);
 static void add_object_address(ObjectClass oclass, Oid objectId, int32 subId,
@@ -1481,7 +1482,9 @@ recordDependencyOnSingleRelExpr(const ObjectAddress *depender,
  * the collation is being freshly introduced to the expression.
  */
 static bool
-NODE_CALLBACK_FUNC(find_expr_references_walker, find_expr_references_context *context)
+find_expr_references_walker(Node *node,
+							find_expr_references_context *context)
+{
 	if (node == NULL)
 		return false;
 	if (IsA(node, Var))
@@ -1940,7 +1943,7 @@ NODE_CALLBACK_FUNC(find_expr_references_walker, find_expr_references_context *co
 		/* Examine substructure of query */
 		context->rtables = lcons(query->rtable, context->rtables);
 		result = query_tree_walker(query,
-								   find_expr_references_walker_untyped,
+								   (node_walker)find_expr_references_walker,
 								   (void *) context,
 								   QTW_IGNORE_JOINALIASES);
 		context->rtables = list_delete_first(context->rtables);
@@ -1987,7 +1990,7 @@ NODE_CALLBACK_FUNC(find_expr_references_walker, find_expr_references_context *co
 		/* fall through to examine arguments */
 	}
 
-	return expression_tree_walker(node, find_expr_references_walker_untyped,
+	return expression_tree_walker(node, (node_walker)find_expr_references_walker,
 								  (void *) context);
 }
 

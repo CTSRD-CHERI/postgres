@@ -58,7 +58,7 @@ static void ExplainOneQuery(Query *query, IntoClause *into, ExplainState *es,
 static void report_triggers(ResultRelInfo *rInfo, bool show_relname,
 				ExplainState *es);
 static double elapsed_time(instr_time *starttime);
-static bool ExplainPreScanNode(PlanState *planstate, void *rels_used);
+static bool ExplainPreScanNode(PlanState *planstate, Bitmapset **rels_used);
 static void ExplainNode(PlanState *planstate, List *ancestors,
 			const char *relationship, const char *plan_name,
 			ExplainState *es);
@@ -744,9 +744,8 @@ elapsed_time(instr_time *starttime)
  * that never appear in the EXPLAIN output (such as inheritance parents).
  */
 static bool
-ExplainPreScanNode(PlanState *planstate, void* arg)
+ExplainPreScanNode(PlanState *planstate, Bitmapset **rels_used)
 {
-	Bitmapset **rels_used = arg;
 	Plan	   *plan = planstate->plan;
 
 	switch (nodeTag(plan))
@@ -784,7 +783,7 @@ ExplainPreScanNode(PlanState *planstate, void* arg)
 			break;
 	}
 
-	return planstate_tree_walker(planstate, ExplainPreScanNode, rels_used);
+	return planstate_tree_walker(planstate, (planstate_walker)ExplainPreScanNode, rels_used);
 }
 
 /*

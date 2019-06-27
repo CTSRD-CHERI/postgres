@@ -47,7 +47,7 @@
 #include "utils/rel.h"
 
 
-static DECLARE_NODE_WALKER(get_last_attnums, ProjectionInfo *)
+static bool get_last_attnums(Node *node, ProjectionInfo *projInfo);
 static void ShutdownExprContext(ExprContext *econtext, bool isCommit);
 
 
@@ -604,7 +604,8 @@ ExecBuildProjectionInfo(List *targetList,
  *	attribute numbers found in the expression
  */
 static bool
-NODE_CALLBACK_FUNC(get_last_attnums, ProjectionInfo *projInfo)
+get_last_attnums(Node *node, ProjectionInfo *projInfo)
+{
 	if (node == NULL)
 		return false;
 	if (IsA(node, Var))
@@ -646,7 +647,7 @@ NODE_CALLBACK_FUNC(get_last_attnums, ProjectionInfo *projInfo)
 		return false;
 	if (IsA(node, GroupingFunc))
 		return false;
-	return expression_tree_walker(node, get_last_attnums_untyped,
+	return expression_tree_walker(node, (node_walker)get_last_attnums,
 								  (void *) projInfo);
 }
 

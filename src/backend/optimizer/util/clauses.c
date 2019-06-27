@@ -95,22 +95,25 @@ typedef struct
 } has_parallel_hazard_arg;
 
 static bool contain_agg_clause_walker(Node *node, void *context);
-static DECLARE_NODE_WALKER(get_agg_clause_costs_walker, get_agg_clause_costs_context *)
-static DECLARE_NODE_WALKER(find_window_functions_walker, WindowFuncLists *)
-static DECLARE_NODE_WALKER(expression_returns_set_rows_walker, double *)
+static bool get_agg_clause_costs_walker(Node *node,
+							get_agg_clause_costs_context *context);
+static bool find_window_functions_walker(Node *node, WindowFuncLists *lists);
+static bool expression_returns_set_rows_walker(Node *node, double *count);
 static bool contain_subplans_walker(Node *node, void *context);
 static bool contain_mutable_functions_walker(Node *node, void *context);
 static bool contain_volatile_functions_walker(Node *node, void *context);
 static bool contain_volatile_functions_not_nextval_walker(Node *node, void *context);
-static DECLARE_NODE_WALKER(has_parallel_hazard_walker, has_parallel_hazard_arg *)
+static bool has_parallel_hazard_walker(Node *node,
+						   has_parallel_hazard_arg *context);
 static bool contain_nonstrict_functions_walker(Node *node, void *context);
 static bool contain_context_dependent_node(Node *clause);
-static DECLARE_NODE_WALKER(contain_context_dependent_node_walker, int *)
+static bool contain_context_dependent_node_walker(Node *node, int *flags);
 static bool contain_leaked_vars_walker(Node *node, void *context);
 static Relids find_nonnullable_rels_walker(Node *node, bool top_level);
 static List *find_nonnullable_vars_walker(Node *node, bool top_level);
 static bool is_strict_saop(ScalarArrayOpExpr *expr, bool falseOK);
-static DECLARE_NODE_MUTATOR(eval_const_expressions_mutator, eval_const_expressions_context *)
+static Node *eval_const_expressions_mutator(Node *node,
+							   eval_const_expressions_context *context);
 static List *simplify_or_arguments(List *args,
 					  eval_const_expressions_context *context,
 					  bool *haveNull, bool *forceTrue);
@@ -142,13 +145,15 @@ static Expr *inline_function(Oid funcid, Oid result_type, Oid result_collid,
 				eval_const_expressions_context *context);
 static Node *substitute_actual_parameters(Node *expr, int nargs, List *args,
 							 int *usecounts);
-static DECLARE_NODE_MUTATOR(substitute_actual_parameters_mutator, substitute_actual_parameters_context *)
+static Node *substitute_actual_parameters_mutator(Node *node,
+							  substitute_actual_parameters_context *context);
 static void sql_inline_error_callback(void *arg);
 static Expr *evaluate_expr(Expr *expr, Oid result_type, int32 result_typmod,
 			  Oid result_collation);
 static Query *substitute_actual_srf_parameters(Query *expr,
 								 int nargs, List *args);
-static DECLARE_NODE_MUTATOR(substitute_actual_srf_parameters_mutator, substitute_actual_srf_parameters_context *)
+static Node *substitute_actual_srf_parameters_mutator(Node *node,
+						  substitute_actual_srf_parameters_context *context);
 static bool tlist_matches_coltypelist(List *tlist, List *coltypelist);
 
 
@@ -429,7 +434,7 @@ contain_agg_clause_walker(Node *node, void *context)
 		return true;			/* abort the tree traversal and return true */
 	}
 	Assert(!IsA(node, SubLink));
-	return expression_tree_walker(node, contain_agg_clause_walker, context);
+	return expression_tree_walker(node, (node_walker)contain_agg_clause_walker, context);
 }
 
 /*
@@ -470,7 +475,8 @@ get_agg_clause_costs(PlannerInfo *root, Node *clause, AggSplit aggsplit,
 }
 
 static bool
-NODE_CALLBACK_FUNC(get_agg_clause_costs_walker, get_agg_clause_costs_context *context)
+get_agg_clause_costs_walker(Node *node, get_agg_clause_costs_context *context)
+{
 	if (node == NULL)
 		return false;
 	if (IsA(node, Aggref))
@@ -699,7 +705,7 @@ NODE_CALLBACK_FUNC(get_agg_clause_costs_walker, get_agg_clause_costs_context *co
 		return false;
 	}
 	Assert(!IsA(node, SubLink));
-	return expression_tree_walker(node, get_agg_clause_costs_walker_untyped,
+	return expression_tree_walker(node, (node_walker)get_agg_clause_costs_walker,
 								  (void *) context);
 }
 
@@ -742,7 +748,8 @@ find_window_functions(Node *clause, Index maxWinRef)
 }
 
 static bool
-NODE_CALLBACK_FUNC(find_window_functions_walker, WindowFuncLists *lists)
+find_window_functions_walker(Node *node, WindowFuncLists *lists)
+{
 	if (node == NULL)
 		return false;
 	if (IsA(node, WindowFunc))
@@ -770,7 +777,7 @@ NODE_CALLBACK_FUNC(find_window_functions_walker, WindowFuncLists *lists)
 		return false;
 	}
 	Assert(!IsA(node, SubLink));
-	return expression_tree_walker(node, find_window_functions_walker_untyped,
+	return expression_tree_walker(node, (node_walker)find_window_functions_walker,
 								  (void *) lists);
 }
 
@@ -800,7 +807,8 @@ expression_returns_set_rows(Node *clause)
 }
 
 static bool
-NODE_CALLBACK_FUNC(expression_returns_set_rows_walker, double *count)
+expression_returns_set_rows_walker(Node *node, double *count)
+{
 	if (node == NULL)
 		return false;
 	if (IsA(node, FuncExpr))
@@ -853,7 +861,7 @@ NODE_CALLBACK_FUNC(expression_returns_set_rows_walker, double *count)
 	if (IsA(node, XmlExpr))
 		return false;
 
-	return expression_tree_walker(node, expression_returns_set_rows_walker_untyped,
+	return expression_tree_walker(node, (node_walker)expression_returns_set_rows_walker,
 								  (void *) count);
 }
 
@@ -1127,7 +1135,8 @@ has_parallel_hazard_checker(Oid func_id, void *context)
 }
 
 static bool
-NODE_CALLBACK_FUNC(has_parallel_hazard_walker, has_parallel_hazard_arg *context)
+has_parallel_hazard_walker(Node *node, has_parallel_hazard_arg *context)
+{
 	if (node == NULL)
 		return false;
 
@@ -1217,13 +1226,13 @@ NODE_CALLBACK_FUNC(has_parallel_hazard_walker, has_parallel_hazard_arg *context)
 
 		/* Recurse into subselects */
 		return query_tree_walker(query,
-								 has_parallel_hazard_walker_untyped,
+								 (node_walker)has_parallel_hazard_walker,
 								 context, 0);
 	}
 
 	/* Recurse to check arguments */
 	return expression_tree_walker(node,
-								  has_parallel_hazard_walker_untyped,
+								  (node_walker)has_parallel_hazard_walker,
 								  context);
 }
 
@@ -1381,7 +1390,8 @@ contain_context_dependent_node(Node *clause)
 #define CCDN_IN_CASEEXPR	0x0001		/* CaseTestExpr okay here? */
 
 static bool
-NODE_CALLBACK_FUNC(contain_context_dependent_node_walker, int *flags)
+contain_context_dependent_node_walker(Node *node, int *flags)
+{
 	if (node == NULL)
 		return false;
 	if (IsA(node, CaseTestExpr))
@@ -1410,13 +1420,13 @@ NODE_CALLBACK_FUNC(contain_context_dependent_node_walker, int *flags)
 			 */
 			*flags |= CCDN_IN_CASEEXPR;
 			res = expression_tree_walker(node,
-									   contain_context_dependent_node_walker_untyped,
+									   (node_walker)contain_context_dependent_node_walker,
 										 (void *) flags);
 			*flags = save_flags;
 			return res;
 		}
 	}
-	return expression_tree_walker(node, contain_context_dependent_node_walker_untyped,
+	return expression_tree_walker(node, (node_walker)contain_context_dependent_node_walker,
 								  (void *) flags);
 }
 
@@ -2452,7 +2462,9 @@ estimate_expression_value(PlannerInfo *root, Node *node)
 }
 
 static Node *
-NODE_CALLBACK_FUNC(eval_const_expressions_mutator, eval_const_expressions_context *context)
+eval_const_expressions_mutator(Node *node,
+							   eval_const_expressions_context *context)
+{
 	if (node == NULL)
 		return NULL;
 	switch (nodeTag(node))
@@ -2537,7 +2549,7 @@ NODE_CALLBACK_FUNC(eval_const_expressions_mutator, eval_const_expressions_contex
 				/* Now, recursively simplify the args (which are a List) */
 				args = (List *)
 					expression_tree_mutator((Node *) args,
-											eval_const_expressions_mutator_untyped,
+											(node_mutator)eval_const_expressions_mutator,
 											(void *) context);
 				/* ... and the filter expression, which isn't */
 				aggfilter = (Expr *)
@@ -2681,7 +2693,7 @@ NODE_CALLBACK_FUNC(eval_const_expressions_mutator, eval_const_expressions_contex
 				 * self.
 				 */
 				args = (List *) expression_tree_mutator((Node *) expr->args,
-											  eval_const_expressions_mutator_untyped,
+											  (node_mutator)eval_const_expressions_mutator,
 														(void *) context);
 
 				/*
@@ -3550,7 +3562,7 @@ NODE_CALLBACK_FUNC(eval_const_expressions_mutator, eval_const_expressions_contex
 	 * cannot eliminate an ArrayRef node, but we might be able to simplify
 	 * constant expressions in its subscripts.
 	 */
-	return expression_tree_mutator(node, eval_const_expressions_mutator_untyped,
+	return expression_tree_mutator(node, (node_mutator)eval_const_expressions_mutator,
 								   (void *) context);
 }
 
@@ -3892,7 +3904,7 @@ simplify_function(Oid funcid, Oid result_type, int32 result_typmod,
 	{
 		args = expand_function_arguments(args, result_type, func_tuple);
 		args = (List *) expression_tree_mutator((Node *) args,
-											  eval_const_expressions_mutator_untyped,
+											  (node_mutator)eval_const_expressions_mutator,
 												(void *) context);
 		/* Argument processing done, give it back to the caller */
 		*args_p = args;
@@ -4619,7 +4631,9 @@ substitute_actual_parameters(Node *expr, int nargs, List *args,
 }
 
 static Node *
-NODE_CALLBACK_FUNC(substitute_actual_parameters_mutator, substitute_actual_parameters_context *context)
+substitute_actual_parameters_mutator(Node *node,
+							   substitute_actual_parameters_context *context)
+{
 	if (node == NULL)
 		return NULL;
 	if (IsA(node, Param))
@@ -4638,7 +4652,7 @@ NODE_CALLBACK_FUNC(substitute_actual_parameters_mutator, substitute_actual_param
 		/* We don't need to copy at this time (it'll get done later) */
 		return list_nth(context->args, param->paramid - 1);
 	}
-	return expression_tree_mutator(node, substitute_actual_parameters_mutator_untyped,
+	return expression_tree_mutator(node, (node_mutator)substitute_actual_parameters_mutator,
 								   (void *) context);
 }
 
@@ -5055,13 +5069,15 @@ substitute_actual_srf_parameters(Query *expr, int nargs, List *args)
 	context.sublevels_up = 1;
 
 	return query_tree_mutator(expr,
-							  substitute_actual_srf_parameters_mutator_untyped,
+							  (node_mutator)substitute_actual_srf_parameters_mutator,
 							  &context,
 							  0);
 }
 
 static Node *
-NODE_CALLBACK_FUNC(substitute_actual_srf_parameters_mutator, substitute_actual_srf_parameters_context *context)
+substitute_actual_srf_parameters_mutator(Node *node,
+						   substitute_actual_srf_parameters_context *context)
+{
 	Node	   *result;
 
 	if (node == NULL)
@@ -5070,7 +5086,7 @@ NODE_CALLBACK_FUNC(substitute_actual_srf_parameters_mutator, substitute_actual_s
 	{
 		context->sublevels_up++;
 		result = (Node *) query_tree_mutator((Query *) node,
-									substitute_actual_srf_parameters_mutator_untyped,
+									(node_mutator)substitute_actual_srf_parameters_mutator,
 											 (void *) context,
 											 0);
 		context->sublevels_up--;
@@ -5095,7 +5111,7 @@ NODE_CALLBACK_FUNC(substitute_actual_srf_parameters_mutator, substitute_actual_s
 		}
 	}
 	return expression_tree_mutator(node,
-								   substitute_actual_srf_parameters_mutator_untyped,
+								   (node_mutator)substitute_actual_srf_parameters_mutator,
 								   (void *) context);
 }
 

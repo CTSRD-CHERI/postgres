@@ -798,6 +798,7 @@ ExecEndNode(PlanState *node)
 bool
 ExecShutdownNode(PlanState *node, void* arg)
 {
+	(void)arg;
 	if (node == NULL)
 		return false;
 
