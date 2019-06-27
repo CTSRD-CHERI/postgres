@@ -1577,7 +1577,7 @@ ExecutePlan(EState *estate,
 			 * at this point.
 			 */
 			if (!(estate->es_top_eflags & EXEC_FLAG_BACKWARD))
-				(void) ExecShutdownNode(planstate);
+				(void) ExecShutdownNode(planstate, NULL);
 			break;
 		}
 

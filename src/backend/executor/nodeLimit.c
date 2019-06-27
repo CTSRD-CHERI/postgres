@@ -136,7 +136,7 @@ ExecLimit(LimitState *node)
 					 * resources at this point.
 					 */
 					if (!(node->ps.state->es_top_eflags & EXEC_FLAG_BACKWARD))
-						(void) ExecShutdownNode(outerPlan);
+						(void) ExecShutdownNode(outerPlan, NULL);
 
 					return NULL;
 				}
