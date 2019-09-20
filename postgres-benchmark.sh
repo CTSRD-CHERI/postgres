@@ -55,10 +55,10 @@ else
 fi
 
 echo "${0}: starting postgres..."
-${PGCTL} start -w -D "${POSTGRES_DATA}"
+STATCOUNTERS_PROGNAME=pg_ctl-start ${PGCTL} start -w -D "${POSTGRES_DATA}"
 
 echo "${0}: running benchmark ${NTIMES} times..."
-${PGBENCH} -i postgres
+STATCOUNTERS_PROGNAME=pgbench-init ${PGBENCH} -i postgres
 if command -v jot 2>/dev/null ; then
 	BENCHCOUNT="$(jot ${NTIMES})"
 elif command -v seq 2>/dev/null ; then
@@ -72,6 +72,6 @@ for i in $BENCHCOUNT; do
 done
 
 echo "${0}: stopping postgres..."
-${PGCTL} stop -w -D "${POSTGRES_DATA}"
+STATCOUNTERS_PROGNAME=pg_ctl-stop ${PGCTL} stop -w -D "${POSTGRES_DATA}"
 
 echo "${0}: DONE RUNNING BENCHMARKS"
