@@ -1,7 +1,6 @@
 @Library('ctsrd-jenkins-scripts') _
 
 properties([disableConcurrentBuilds(),
-            compressBuildLog(),
             disableResume(),
             [$class: 'GithubProjectProperty', displayName: '', projectUrlStr: 'https://github.com/CTSRD-CHERI/llvm/'],
             [$class: 'CopyArtifactPermissionProperty', projectNames: '*'],
@@ -27,11 +26,7 @@ for (i in ["mips", "cheri128", "cheri256"]) {
             extraArgs: '--no-with-libstatcounters --postgres/no-debug-info --postgres/assertions --postgres/linkage=dynamic',
             beforeTarball: cleanupScript,
             skipArchiving: true,
-            testScript: 'cd /opt/$CPU/ && sh -xe ./run-postgres-tests.sh',
             beforeBuild: 'ls -la $WORKSPACE',
-            noIncrementalBuild: true,
-            // Postgres tests need the full disk image (they invoke diff -u)
-            minimalTestImage: false,
             testTimeout: 4 * 60 * 60, // increase the test timeout to 4 hours (CHERI can take a loooong time)
             /* sequential: true, // for now run all in order until we have it stable */)
 }
