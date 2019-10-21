@@ -26,6 +26,7 @@ for (i in ["mips", "cheri128", "cheri256"]) {
             extraArgs: '--no-with-libstatcounters --postgres/no-debug-info --postgres/assertions --postgres/linkage=dynamic',
             beforeTarball: cleanupScript,
             skipArchiving: true,
+            runTests: true,
             beforeBuild: 'ls -la $WORKSPACE',
             testTimeout: 4 * 60 * 60, // increase the test timeout to 4 hours (CHERI can take a loooong time)
             /* sequential: true, // for now run all in order until we have it stable */)
