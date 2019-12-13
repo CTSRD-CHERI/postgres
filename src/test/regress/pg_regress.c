@@ -1526,9 +1526,17 @@ wait_for_tests(PID_TYPE * pids, int *statuses, char **names, int num_tests)
 static void
 log_child_failure(int exitstatus)
 {
-	if (WIFEXITED(exitstatus))
+	if (WIFEXITED(exitstatus)) {
 		status(_(" (test process exited with exit code %d)"),
 			   WEXITSTATUS(exitstatus));
+		/*
+		 * Looks like postmaster has crashed.  Sleep for a moment
+		 * to avoid subsequent tests spuriously failing with
+		 * 'FAILED (test process exited with exit code 2)' because
+		 * it hadn't recovered yet.
+		 */
+		sleep(60);
+	}
 	else if (WIFSIGNALED(exitstatus))
 	{
 #if defined(WIN32)
