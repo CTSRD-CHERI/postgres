@@ -20,6 +20,7 @@ INSTALL_DIR=${CHERI_ROOT}/output/rootfs-purecap128
 #CFLAGS_LIBSTATCOUNTERS="-Wl,--whole-archive -lstatcounters -Wl,--no-whole-archive"
 
 export PATH=${CHERISDK}:${CHERILDDIR}:$PATH
+export AR=${CHERISDK}/ar
 export CC=${CHERISDK}/clang
 export CXX=${CHERISDK}/clang++
 COMMON_FLAGS="-pipe --sysroot=${CHERIBSD_SYSROOT} -B${CHERISDK} -target cheri-unknown-freebsd -mabi=${MABI} -msoft-float -O -integrated-as"
