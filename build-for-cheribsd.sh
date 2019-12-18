@@ -14,7 +14,7 @@ esac
 
 CHERI_ROOT="${HOME}/cheri"
 CHERISDK="${CHERI_ROOT}/output/sdk/bin"
-CHERIBSD_SYSROOT="${CHERI_ROOT}/output/sdk/sysroot128"
+CHERIBSD_SYSROOT="${CHERI_ROOT}/output/rootfs-purecap128"
 READLINE_INCLUDE_DIR=${CHERIBSD_SYSROOT}/usr/include/edit/
 INSTALL_DIR=${CHERI_ROOT}/output/rootfs-purecap128
 #CFLAGS_LIBSTATCOUNTERS="-Wl,--whole-archive -lstatcounters -Wl,--no-whole-archive"
