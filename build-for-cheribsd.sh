@@ -38,5 +38,5 @@ cp run-postgres-tests.sh "${INSTALL_DIR}/postgres/run-postgres-tests.sh"
 #cp run-initdb-cheri.sh "${INSTALL_DIR}/postgres/run-initdb-cheri.sh"
 #cp postgres-benchmark.sh "${INSTALL_DIR}/postgres-benchmark.sh"
 #chmod 755 "${INSTALL_DIR}/postgres-benchmark.sh"
-chmod -R a+rX "${INSTALL_DIR}"
+chmod -R a+rX "${INSTALL_DIR}/postgres"
 
