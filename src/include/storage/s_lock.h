@@ -945,6 +945,20 @@ spin_delay(void)
 #endif	/* !defined(HAS_TEST_AND_SET) */
 
 
+#if !defined(HAS_TEST_AND_SET) && defined(__FreeBSD__)
+/*
+ * Fall back to machine/atomic.h for FreeBSD
+ * TODO: should just use C11 atomics.
+ */
+#define HAS_TEST_AND_SET
+#include <machine/atomic.h>
+typedef uint32_t slock_t;
+/* machine/atomic.h returns zero on failure so we need to invert the result */
+#define TAS(lock) (atomic_cmpset_acq_32(lock, 0, 1) == 0)
+#undef S_UNLOCK
+#define S_UNLOCK(lock) atomic_store_rel_32(lock, 0)
+#endif /* !defined(HAS_TEST_AND_SET) && defined(__FreeBSD__) */
+
 /* Blow up if we didn't have any way to do spinlocks */
 #ifndef HAS_TEST_AND_SET
 #error PostgreSQL does not have native spinlock support on this platform.  To continue the compilation, rerun configure using --disable-spinlocks.  However, performance will be poor.  Please report this to pgsql-bugs@postgresql.org.
