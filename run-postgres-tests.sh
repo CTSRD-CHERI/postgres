@@ -1,4 +1,6 @@
-#!/bin/sh -xe
+#!/bin/sh
+
+set -xe
 
 POSTGRES_ROOT="$(realpath .)"
 if ! test -e "${POSTGRES_ROOT}/run-postgres-tests.sh"; then
