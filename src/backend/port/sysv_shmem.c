@@ -536,7 +536,7 @@ CreateAnonymousSegment(Size *size)
 
 #ifdef __CHERI_PURE_CAPABILITY__
 	/* Ensure the size is representable for CHERI128 */
-	allocsize = __builtin_align_up(allocsize, 1ULL << CHERI_ALIGN_SHIFT(allocsize));
+	allocsize = __builtin_cheri_round_representable_length(allocsize);
 	*size = allocsize; /* Update for the non-huge page size which reuses *size */
 #endif
 
