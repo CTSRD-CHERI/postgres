@@ -234,14 +234,31 @@
  * bool
  *		Boolean value, either true or false.
  *
- * XXX for C++ compilers, we assume the compiler has a compatible
- * built-in definition of bool.
+ * We use stdbool.h if available and its bool has size 1.  That's useful for
+ * better compiler and debugger output and for compatibility with third-party
+ * libraries.  But PostgreSQL currently cannot deal with bool of other sizes;
+ * there are static assertions around the code to prevent that.
+ *
+ * For C++ compilers, we assume the compiler has a compatible built-in
+ * definition of bool.
+ *
+ * See also the version of this code in src/interfaces/ecpg/include/ecpglib.h.
  */
 
 #ifndef __cplusplus
 
+/*
+ * Note: See upstream commits 9a95a77d9d5d3003d2d67121f2731b6e5fc37336,
+ * d26a810ebf9e419556a60bdc0a4190883c38f4c4 and
+ * 7a0574b50ee9c2b96ce94c29e031c103285c0b1d.
+ */
+/* #ifdef PG_USE_STDBOOL */
+#if __has_include(<stdbool.h>)
+#include <stdbool.h>
+#else
+
 #ifndef bool
-typedef char bool;
+typedef unsigned char bool;
 #endif
 
 #ifndef true
@@ -252,7 +269,8 @@ typedef char bool;
 #define false	((bool) 0)
 #endif
 
-#endif   /* not C++ */
+#endif							/* not PG_USE_STDBOOL */
+#endif							/* not C++ */
 
 typedef bool *BoolPtr;
 

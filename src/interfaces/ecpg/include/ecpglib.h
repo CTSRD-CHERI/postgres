@@ -18,18 +18,40 @@ extern char *ecpg_gettext(const char *msgid) pg_attribute_format_arg(1);
 #define ecpg_gettext(x) (x)
 #endif
 
+/*
+ * This is a small extract from c.h since we don't want to leak all postgres
+ * definitions into ecpg programs; but we need to know what bool is.
+ */
 #ifndef __cplusplus
-#ifndef bool
-#define bool char
-#endif   /* ndef bool */
+
+/*
+ * Note: See upstream commits 9a95a77d9d5d3003d2d67121f2731b6e5fc37336,
+ * d26a810ebf9e419556a60bdc0a4190883c38f4c4 and
+ * 7a0574b50ee9c2b96ce94c29e031c103285c0b1d.
+ */
+/* #ifdef PG_USE_STDBOOL */
+#if __has_include(<stdbool.h>)
+#include <stdbool.h>
+#else
+
+/*
+ * We assume bool has been defined if true and false are.  This avoids
+ * duplicate-typedef errors if this file is included after c.h.
+ */
+#if !(defined(true) && defined(false))
+typedef unsigned char bool;
+#endif
 
 #ifndef true
 #define true	((bool) 1)
-#endif   /* ndef true */
+#endif
+
 #ifndef false
 #define false	((bool) 0)
-#endif   /* ndef false */
-#endif   /* not C++ */
+#endif
+
+#endif							/* not PG_USE_STDBOOL */
+#endif							/* not C++ */
 
 #ifndef TRUE
 #define TRUE	1
