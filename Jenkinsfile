@@ -16,6 +16,7 @@ cheribuildProject(target: 'postgres',
         targetArchitectures: ["mips64", "mips64-purecap", "riscv64", "riscv64-purecap"],
         // extraArgs: '--with-libstatcounters --postgres/no-debug-info --postgres/no-assertions',
         extraArgs: '--no-with-libstatcounters --postgres/assertions --postgres/linkage=dynamic',
+        minimalTestImage: false, // we need the locale files to run tests
         beforeTarball: cleanupScript,
         skipArchiving: true,
         runTests: true,
